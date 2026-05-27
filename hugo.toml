@@ -1,0 +1,78 @@
+baseURL = 'https://build4me2.github.io/'
+languageCode = 'en-us'
+title = 'Manisha Chand — Tech, AI & Ethics'
+theme = 'PaperMod'
+
+# --- Permalinks ---
+[permalinks]
+  posts = "/:slug/"
+
+# --- Menu ---
+[[menu.main]]
+  identifier = "home"
+  name = "Home"
+  url = "/"
+  weight = 10
+
+[[menu.main]]
+  identifier = "about"
+  name = "About"
+  url = "/about/"
+  weight = 20
+
+[[menu.main]]
+  identifier = "archives"
+  name = "Archive"
+  url = "/posts/"
+  weight = 30
+
+# --- Services / SEO ---
+[services]
+  [services.googleAnalytics]
+    id = ""
+
+# --- Params ---
+[params]
+  env = "production"
+  description = "Exploring Technology, AI & Ethics"
+  defaultTheme = "auto"
+  ShowReadingTime = true
+  ShowShareButtons = false
+  ShowPostNavLinks = true
+  ShowBreadCrumbs = true
+  ShowCodeCopyButtons = true
+  ShowWordCount = true
+  ShowToc = true
+
+  # Social links in header
+  [params.fallback]
+    avatarUrl = "/images/avatar.png"
+
+  [[params.socialIcons]]
+    name = "github"
+    url = "https://github.com/build4me2"
+  [[params.socialIcons]]
+    name = "instagram"
+    url = "https://instagram.com/manesha63"
+  [[params.socialIcons]]
+    name = "email"
+    url = "mailto:chandmanisha00@gmail.com"
+
+  # Home page info
+  [params.homePageMeta]
+    homeInfoParams = "True"
+
+  [[params.homePageMeta.entries]]
+    title = "Manisha Chand"
+    subtitle = "Exploring Technology, AI & Ethics"
+    # Add your own socials or links
+    buttons = []
+
+# --- Main menu ---
+[params.mainMenuDisplay]
+  name = "main"
+
+# --- Taxonomies ---
+[taxonomies]
+  tag = "tags"
+  category = "categories"
