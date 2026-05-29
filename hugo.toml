@@ -9,9 +9,9 @@ theme = 'PaperMod'
 
 # --- Menu ---
 [[menu.main]]
-  identifier = "home"
-  name = "Home"
-  url = "/"
+  identifier = "blog"
+  name = "Blog"
+  url = "/posts/"
   weight = 10
 
 # --- Services / SEO ---
@@ -40,6 +40,9 @@ theme = 'PaperMod'
   [[params.socialIcons]]
     name = "instagram"
     url = "https://instagram.com/manesha63"
+  [[params.socialIcons]]
+    name = "linkedin"
+    url = "https://www.linkedin.com/in/manisha-chand-393908304/"
   [[params.socialIcons]]
     name = "email"
     url = "mailto:chandmanisha00@gmail.com"
