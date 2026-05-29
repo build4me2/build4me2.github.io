@@ -22,7 +22,6 @@ theme = 'PaperMod'
 # --- Params ---
 [params]
   env = "production"
-  description = "Exploring Technology, AI & Ethics"
   defaultTheme = "auto"
   ShowReadingTime = true
   ShowShareButtons = false
