@@ -1,0 +1,26 @@
+{{/* Render collected citations at bottom of post */}}
+{{- $citations := (page.Scratch.Get "citations") -}}
+{{- if and $citations (gt (len $citations) 0) -}}
+<div class="citation-section" id="references">
+  <h2 id="citations-heading" class="citation-heading">📚 References</h2>
+  <ol class="citation-list">
+    {{- range $i, $c := $citations -}}
+    <li class="citation-item" id="ref-{{ $i }}">
+      <span class="citation-number">{{ add $i 1 }}</span>
+      {{- with $c.author -}}
+        <strong>{{ . }}</strong>.
+      {{- end -}}
+      <a href="{{ $c.url }}" target="_blank" rel="noopener noreferrer" class="citation-title" title="Open source: {{ $c.title }}">
+        {{ $c.title }}
+      </a>
+      <span class="citation-meta">
+        {{ with $c.source }}<span class="citation-source">{{ . }}</span> — {{ end }}
+        <a href="{{ $c.url }}" target="_blank" rel="noopener noreferrer" class="citation-url" title="Visit source">
+          {{ replace (replaceRE "^https?://(www\\.)?([^/]+).*" "$2" $c.url) "." "·" }}
+        </a>
+      </span>
+    </li>
+    {{- end -}}
+  </ol>
+</div>
+{{- end -}}

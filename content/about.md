@@ -2,7 +2,6 @@
 title: "About"
 date: 2026-05-27
 draft: false
-menu: "main"
 ---
 
 ## Manisha Chand
@@ -22,7 +21,7 @@ I bring a unique perspective combining technical understanding with a deep conce
 ### Get in Touch
 
 - 📧 [Email](mailto:chandmanisha00@gmail.com)
-- 🐙 [GitHub](https://github.com/chandmanisha00)
+- 🐙 [GitHub](https://github.com/build4me2)
 - 💼 [LinkedIn](https://linkedin.com/in/chandmanisha)
 
 ---

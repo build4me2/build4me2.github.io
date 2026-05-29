@@ -1,0 +1,161 @@
+/* === Citation Styles for Manisha Chand Blog === */
+
+/* Citation inline markers */
+.citation-link {
+  color: var(--primary);
+  font-weight: 600;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.citation-link:hover {
+  color: var(--accent-color, #0078d4);
+}
+
+.citation-link sup {
+  font-size: 0.7em;
+  line-height: 0;
+  vertical-align: super;
+}
+
+/* Citation section */
+.citation-section {
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  border-top: 2px solid var(--border);
+  page-break-inside: avoid;
+}
+
+.citation-heading {
+  font-size: 1.4rem;
+  margin-bottom: 1rem;
+  color: var(--primary);
+}
+
+/* Citation list */
+.citation-list {
+  list-style: none;
+  padding-left: 0;
+  counter-reset: citation-counter;
+}
+
+.citation-item {
+  counter-increment: citation-counter;
+  margin-bottom: 0.8rem;
+  padding-left: 2.8em;
+  position: relative;
+  line-height: 1.6;
+  color: var(--content);
+  transition: background-color 0.15s ease;
+  border-radius: 4px;
+  padding: 0.4em 0.5em;
+  padding-left: 2.8em;
+}
+
+.citation-item:hover {
+  background-color: var(--code-bg);
+}
+
+/* Citation number */
+.citation-number {
+  position: absolute;
+  left: 0;
+  font-weight: 600;
+  color: var(--secondary);
+  font-size: 0.85em;
+  min-width: 2em;
+  text-align: right;
+}
+
+/* Citation title link */
+.citation-title {
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.2s ease;
+  border-bottom: 1px dotted var(--tertiary);
+}
+
+.citation-title:hover {
+  color: var(--accent-color, #0078d4);
+  border-bottom-color: var(--accent-color, #0078d4);
+}
+
+/* Citation metadata (source + URL) */
+.citation-meta {
+  color: var(--secondary);
+  font-size: 0.9em;
+  display: block;
+  margin-top: 0.15em;
+}
+
+.citation-source {
+  font-style: italic;
+}
+
+.citation-url {
+  color: var(--secondary);
+  font-size: 0.85em;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.citation-url:hover {
+  color: var(--accent-color, #0078d4);
+  text-decoration: underline;
+}
+
+/* Dark mode adjustments */
+[data-theme="dark"] .citation-link {
+  color: #9cdcfe;
+}
+
+[data-theme="dark"] .citation-link:hover {
+  color: #4ec9b0;
+}
+
+[data-theme="dark"] .citation-title {
+  color: #d4d4d4;
+  border-bottom-color: #555;
+}
+
+[data-theme="dark"] .citation-title:hover {
+  color: #4ec9b0;
+  border-bottom-color: #4ec9b0;
+}
+
+[data-theme="dark"] .citation-item:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Smooth anchor scroll for citation links */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Print styles */
+@media print {
+  .citation-section {
+    page-break-before: always;
+  }
+  
+  .citation-link {
+    color: inherit;
+  }
+  
+  .citation-url {
+    color: inherit;
+  }
+}
+
+/* Mobile responsive */
+@media screen and (max-width: 600px) {
+  .citation-item {
+    padding-left: 2.4em;
+    font-size: 0.92em;
+  }
+  
+  .citation-heading {
+    font-size: 1.2rem;
+  }
+}

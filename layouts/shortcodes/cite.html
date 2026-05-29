@@ -1,0 +1,33 @@
+{{/* Inline citation marker
+  Usage: {{< cite "Title" "URL" >}}
+  Or:    {{< cite "Title" "URL" "Author Name" >}}
+  Or:    {{< cite "Title" "URL" "Author" "Source/Year" >}}
+*/}}
+{{- $title := .Get 0 | default "Source" -}}
+{{- $url   := .Get 1 | default "#" -}}
+{{- $author := .Get 2 -}}
+{{- $source := .Get 3 -}}
+
+{{- /* Initialize citations array on page scratch */ -}}
+{{- if not (page.Scratch.Get "citations") -}}
+  {{- page.Scratch.Set "citations" slice -}}
+{{- end -}}
+
+{{- /* Check for duplicate URL */ -}}
+{{- $existing := false -}}
+{{- range (page.Scratch.Get "citations") -}}
+  {{- if eq .url $url -}}
+    {{- $existing = true -}}
+    <a href="#ref-{{ sub .index 1 }}" class="citation-link" title="{{ $title }}">
+      <sup>[{{ .index }}]</sup>
+    </a>
+  {{- end -}}
+{{- end -}}
+
+{{- if not $existing -}}
+  {{- $num := len (page.Scratch.Get "citations") -}}
+  {{- page.Scratch.Add "citations" (dict "index" (add $num 1) "title" $title "url" $url "author" $author "source" $source) -}}
+  <a href="#ref-{{ $num }}" class="citation-link" title="{{ $title }}{{ if $author }} — {{ $author }}{{ end }}">
+    <sup>[{{ add $num 1 }}]</sup>
+  </a>
+{{- end -}}
