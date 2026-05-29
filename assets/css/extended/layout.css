@@ -1,0 +1,60 @@
+/* === Header styled to match reference: bold serif title left, menu + toggle right, thin underline === */
+
+/* Site title: bold serif (matches the "Vel Moon" look) */
+.logo a {
+    font-family: Georgia, "Times New Roman", serif;
+    font-weight: 700;
+    font-size: 26px;
+    letter-spacing: 0.2px;
+}
+
+/* Header bottom separator line */
+.header {
+    border-bottom: 1px solid var(--border);
+}
+
+/* Menu items on right, bolder weight */
+#menu {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+#menu li a {
+    font-weight: 600;
+    font-size: 15px;
+}
+
+/* Theme toggle: rounded button with background (like the reference's sun icon) */
+.menu-theme-toggle {
+    display: flex;
+    align-items: center;
+}
+
+.menu-theme-toggle button.theme-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    background: var(--entry);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    color: var(--primary);
+    transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.menu-theme-toggle button.theme-toggle:hover {
+    background: var(--tertiary);
+    transform: translateY(-1px);
+}
+
+.menu-theme-toggle button.theme-toggle svg {
+    width: 18px;
+    height: 18px;
+}
