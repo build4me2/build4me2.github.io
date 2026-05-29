@@ -1,6 +1,6 @@
 baseURL = 'https://build4me2.github.io/'
 locale = 'en-US'
-title = 'Manisha Chand — Tech, AI & Ethics'
+title = 'Tech, AI & Ethics'
 theme = 'PaperMod'
 
 # --- Permalinks ---
@@ -13,18 +13,6 @@ theme = 'PaperMod'
   name = "Home"
   url = "/"
   weight = 10
-
-[[menu.main]]
-  identifier = "about"
-  name = "About"
-  url = "/about/"
-  weight = 20
-
-[[menu.main]]
-  identifier = "archives"
-  name = "Archive"
-  url = "/posts/"
-  weight = 30
 
 # --- Services / SEO ---
 [services]
@@ -55,11 +43,6 @@ theme = 'PaperMod'
   [[params.socialIcons]]
     name = "email"
     url = "mailto:chandmanisha00@gmail.com"
-
-  # Home page intro
-  [params.homeInfoParams]
-    Title = "Manisha Chand"
-    Content = "Exploring **Technology**, **AI** & **Ethics** — thoughtful notes on responsible innovation, society, and the human impact of emerging systems."
 
 # --- Taxonomies ---
 [taxonomies]
