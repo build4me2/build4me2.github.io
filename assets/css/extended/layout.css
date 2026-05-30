@@ -1,6 +1,4 @@
-/* === Header styled to match reference: bold serif title left, menu + toggle right, thin underline === */
-
-/* Site title: bold serif (matches the "Vel Moon" look) */
+/* === Site title: bold serif === */
 .logo a {
     font-family: Georgia, "Times New Roman", serif;
     font-weight: 700;
@@ -8,12 +6,16 @@
     letter-spacing: 0.2px;
 }
 
-/* Header bottom separator line */
+/* === Header: sticky at top of viewport with thin separator === */
 .header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: var(--theme);
     border-bottom: 1px solid var(--border);
 }
 
-/* Menu items on right, bolder weight */
+/* === Menu items right side, bolder weight === */
 #menu {
     display: flex;
     align-items: center;
@@ -28,7 +30,7 @@
     font-size: 15px;
 }
 
-/* Theme toggle: rounded button with background (like the reference's sun icon) */
+/* === Theme toggle: rounded button styled like reference === */
 .menu-theme-toggle {
     display: flex;
     align-items: center;
@@ -41,20 +43,49 @@
     width: 38px;
     height: 38px;
     padding: 0;
-    background: var(--entry);
+    background: transparent;
     border: 1px solid var(--border);
     border-radius: 8px;
     cursor: pointer;
     color: var(--primary);
-    transition: background 0.15s ease, transform 0.15s ease;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
 }
 
 .menu-theme-toggle button.theme-toggle:hover {
-    background: var(--tertiary);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 1px var(--primary);
     transform: translateY(-1px);
 }
 
 .menu-theme-toggle button.theme-toggle svg {
     width: 18px;
     height: 18px;
+}
+
+/* === Hide scrollbar visually but keep scrolling functional === */
+html, body {
+    scrollbar-width: none;          /* Firefox */
+    -ms-overflow-style: none;       /* IE/Edge */
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+    display: none;                  /* Chrome / Safari */
+    width: 0;
+    height: 0;
+}
+
+/* === Empty home page fits viewport exactly (no extra space below) === */
+body {
+    min-height: 100vh;
+    margin: 0;
+}
+
+.main {
+    min-height: 0;
+}
+
+/* When the body content is short, main absorbs the remaining height */
+body > .main {
+    flex: 1 0 auto;
 }
