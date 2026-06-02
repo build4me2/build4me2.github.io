@@ -1,6 +1,10 @@
 {{- define "main" }}
 
-{{- if not .IsHome | and .Title }}
+{{- if .IsHome }}
+<header class="page-header">
+  <h1>Blog</h1>
+</header>
+{{- else if .Title }}
 <header class="page-header">
   {{- partial "breadcrumbs.html" . }}
   <h1>{{ .Title }}</h1>
