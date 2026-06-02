@@ -46,6 +46,12 @@ theme = 'PaperMod'
     name = "email"
     url = "mailto:chandmanisha00@gmail.com"
 
+# --- Markup ---
+[markup]
+  [markup.goldmark]
+    [markup.goldmark.renderer]
+      unsafe = true
+
 # --- Taxonomies ---
 [taxonomies]
   tag = "tags"

@@ -94,6 +94,21 @@
     text-underline-offset: 3px;
 }
 
+/* Preserve PDF-extracted text exactly: line breaks, spacing, paragraphs */
+.pdf-exact-text {
+    white-space: pre-wrap;
+    font-family: inherit;
+    color: var(--content);
+}
+
+.pdf-exact-text a,
+.pdf-exact-text a:visited,
+.pdf-exact-text a:hover {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
 /* === Hide scrollbar visually but keep scrolling functional === */
 html, body {
     scrollbar-width: none;          /* Firefox */

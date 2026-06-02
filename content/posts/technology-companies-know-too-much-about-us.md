@@ -8,14 +8,103 @@ hideMeta = true
 ShowToc = false
 +++
 
-Technology companies certainly know too much about us. But what is too much? They are not bound by the same laws that government surveillance is, and the consumer is often agreeing to terms and conditions that are semi-consensual (i.e., if they didn’t want to agree to the terms, then they don’t need to use the service).1 Different places put different restrictions on companies collecting data, such as the EU making Meta and other companies roll back some of their data collection.2 So, is it still too much in those places? The answer is likely still yes. Whenever the user data is traded or sold by the companies attaining it (even if it is with “trusted partners”), it is likely data that should not have been taken in the first place. It indicates that the user data is not solely being utilized for increased performance on the platform to enhance user experience, but rather as a leverage for the company with the broader economy and perhaps the government. The bulk of technological advancement in computing and data collection (as well as in many other forms of engineering) is asymmetrically held by corporations, despite the outcome of such advancements determining much about how the majority is governed. The history of major technological advancement in the U.S., from Silicon Valley to Bell Labs, has been funded and given special rights by the government. The adamant and perhaps foundational belief in an American free market has been undermined consistently by its own government giving bailouts to financial institutions and industry titans, while also propping up technology firms for long-term R&D and large government contracts. Many of the other technological nation-states follow a similar pattern with varying degrees of success and government involvement. So in that context, who is responsible for protecting personal information? Why is it that the governments of the world don’t develop technology specifically with the intention of governing it/with it? The practical answer is: people are responsible for their own privacy. Under US law, you are entering a consensual contract with whichever technology firm’s platform you agree to the terms of service on. This means if you sign away your right to privacy, it is your own 1
+<pre class="pdf-exact-text">          "Technology Companies Know Too Much About Us"
+                           Manisha Chand
+CSC 300GW: Ethics, Communication, and Tools for Software Development
+                          Dr. Sanika Doolani
+                          February 24, 2026
 
-Naughton, J. (2019). The privacy paradox: why do people keep using tech firms that abuse their data?. The Guardian. 2 Hunton Andrews Kurth LLP. (2025, April 25). European Commission fines Apple and Meta for non-compliance with the DMA. Privacy & Cybersecurity Law Blog.
 
-responsibility. The government can step back and allow consumers to hand away their rights and claim they were none the wiser. While not explicitly stated by any one government, it can be reasonably inferred that governments generally keep their hands off of directly owning or managing digital platforms for this exact reason: if they own the platform, they can’t ask citizens to sign away their rights legally. If the third party of a corporation does it, the government can reap the benefits and face none of the repercussions (China is somewhat of an exception here, which we’ll come back to later). An example of this kind of loophole approach in government can be seen in the UKUSA Agreement, which allowed member nation states to spy and retrieve data internationally from each other’s citizens, then swap information between intelligence agencies. If the agencies were to acquire the data domestically, it would have been illegal. The Snowden files shed some light on these issues, and how governments avoid domestic regulation.3 The agreement itself would not have been possible if there weren’t companies to exploit. While the iterations of law continue to address some of these core issues of privacy and surveillance, it is worth noting that the technology itself, particularly communications technology, is not a stagnant field. The law has, in many cases, failed to catch up with the current state of communications technology, and is reactive when dealing with news of massive breaches of conduct by corporations, law enforcement, or both.4 It is almost unrealistic to expect any true governance on privacy to come from an external body, especially when there is a defined market for the data being accumulated. China does not even attempt to deal with the facade of civil rights in the same way that Western democracies tend to. Civilians are subjected to mass surveillance, and they know it. But in turn, their data is perhaps more protected by their government than Western countries’ citizens, who know neither who is surveilling them nor where their information goes. The protection of privacy and information is something that historically has been communally governed. Whether it was by a formal government or the local community, privacy had more to do with the physical security of whatever papers you had and actions you took. Surveillance before the digital age was a more proactive task. In the modern day, there is an 3
+                      "Technology Companies Know Too Much About Us"
 
-Karbauskas, Š. (2018). Five, Nine, and Fourteen Eyes alliances explained. cybernews. Baase, S. (2012). A gift of fire: Social, legal, and ethical issues for computing technology (4th ed.). Pearson. 4
 
-inverted relationship where individuals have more personal data than ever before, but the least governance over that data. Companies serve as an intermediate party for advertisers and governments to surveil and influence masses in a way that requires much less energy than it did in prior generations.5 As technology advances further, it will be increasingly upon the individual to become literate in new technologies to understand exactly how much information they are giving away.
 
-Baase, S. (2012). A gift of fire: Social, legal, and ethical issues for computing technology (4th ed.). Pearson.
+
+Technology companies certainly know too much about us. But what is too much? They are not
+bound by the same laws that government surveillance is, and the consumer is often agreeing to
+terms and conditions that are semi-consensual (i.e., if they didn’t want to agree to the terms, then
+they don’t need to use the service).1 Different places put different restrictions on companies
+collecting data, such as the EU making Meta and other companies roll back some of their data
+collection.2 So, is it still too much in those places? The answer is likely still yes. Whenever the
+user data is traded or sold by the companies attaining it (even if it is with “trusted partners”), it is
+likely data that should not have been taken in the first place. It indicates that the user data is not
+solely being utilized for increased performance on the platform to enhance user experience, but
+rather as a leverage for the company with the broader economy and perhaps the government.
+
+
+        The bulk of technological advancement in computing and data collection (as well as in
+many other forms of engineering) is asymmetrically held by corporations, despite the outcome of
+such advancements determining much about how the majority is governed. The history of major
+technological advancement in the U.S., from Silicon Valley to Bell Labs, has been funded and
+given special rights by the government. The adamant and perhaps foundational belief in an
+American free market has been undermined consistently by its own government giving bailouts
+to financial institutions and industry titans, while also propping up technology firms for
+long-term R&amp;D and large government contracts. Many of the other technological nation-states
+follow a similar pattern with varying degrees of success and government involvement. So in that
+context, who is responsible for protecting personal information? Why is it that the governments
+of the world don’t develop technology specifically with the intention of governing it/with it?
+
+
+        The practical answer is: people are responsible for their own privacy. Under US law,
+you are entering a consensual contract with whichever technology firm’s platform you agree to
+the terms of service on. This means if you sign away your right to privacy, it is your own
+1
+  Naughton, J. (2019). The privacy paradox: why do people keep using tech firms that abuse their data?.
+The Guardian.
+2
+  Hunton Andrews Kurth LLP. (2025, April 25). European Commission fines Apple and Meta for
+non-compliance with the DMA. Privacy &amp; Cybersecurity Law Blog.
+
+
+responsibility. The government can step back and allow consumers to hand away their rights and
+claim they were none the wiser. While not explicitly stated by any one government, it can be
+reasonably inferred that governments generally keep their hands off of directly owning or
+managing digital platforms for this exact reason: if they own the platform, they can’t ask citizens
+to sign away their rights legally. If the third party of a corporation does it, the government can
+reap the benefits and face none of the repercussions (China is somewhat of an exception here,
+which we’ll come back to later). An example of this kind of loophole approach in government
+can be seen in the UKUSA Agreement, which allowed member nation states to spy and retrieve
+data internationally from each other’s citizens, then swap information between intelligence
+agencies. If the agencies were to acquire the data domestically, it would have been illegal. The
+Snowden files shed some light on these issues, and how governments avoid domestic regulation.3
+The agreement itself would not have been possible if there weren’t companies to exploit.
+
+
+While the iterations of law continue to address some of these core issues of privacy and
+surveillance, it is worth noting that the technology itself, particularly communications
+technology, is not a stagnant field. The law has, in many cases, failed to catch up with the current
+state of communications technology, and is reactive when dealing with news of massive breaches
+of conduct by corporations, law enforcement, or both.4 It is almost unrealistic to expect any true
+governance on privacy to come from an external body, especially when there is a defined market
+for the data being accumulated. China does not even attempt to deal with the facade of civil
+rights in the same way that Western democracies tend to. Civilians are subjected to mass
+surveillance, and they know it. But in turn, their data is perhaps more protected by their
+government than Western countries’ citizens, who know neither who is surveilling them nor
+where their information goes.
+
+
+        The protection of privacy and information is something that historically has been
+communally governed. Whether it was by a formal government or the local community, privacy
+had more to do with the physical security of whatever papers you had and actions you took.
+Surveillance before the digital age was a more proactive task. In the modern day, there is an
+
+3
+ Karbauskas, Š. (2018). Five, Nine, and Fourteen Eyes alliances explained. cybernews.
+4
+ Baase, S. (2012). A gift of fire: Social, legal, and ethical issues for computing technology (4th ed.).
+Pearson.
+
+
+inverted relationship where individuals have more personal data than ever before, but the least
+governance over that data. Companies serve as an intermediate party for advertisers and
+governments to surveil and influence masses in a way that requires much less energy than it did
+in prior generations.5 As technology advances further, it will be increasingly upon the individual
+to become literate in new technologies to understand exactly how much information they are
+giving away.
+
+
+
+
+5
+ Baase, S. (2012). A gift of fire: Social, legal, and ethical issues for computing technology (4th ed.).
+Pearson.</pre>
