@@ -7,13 +7,6 @@ theme = 'PaperMod'
 [permalinks]
   posts = "/:slug/"
 
-# --- Menu ---
-[[menu.main]]
-  identifier = "blog"
-  name = "Blog"
-  url = "/"
-  weight = 10
-
 # --- Services / SEO ---
 [services]
   [services.googleAnalytics]
