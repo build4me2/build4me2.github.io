@@ -1,1 +1,18 @@
-{{- /* Footer intentionally empty */ -}}
+{{- if (not site.Params.disableThemeToggle) }}
+<script>
+  (function () {
+    const toggle = document.getElementById("theme-toggle");
+    if (!toggle) return;
+    toggle.addEventListener("click", function () {
+      const html = document.documentElement;
+      if (html.dataset.theme === "dark") {
+        html.dataset.theme = "light";
+        localStorage.setItem("pref-theme", "light");
+      } else {
+        html.dataset.theme = "dark";
+        localStorage.setItem("pref-theme", "dark");
+      }
+    });
+  })();
+</script>
+{{- end }}

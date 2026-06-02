@@ -2,7 +2,7 @@
 .logo a {
     font-family: Georgia, "Times New Roman", serif;
     font-weight: 700;
-    font-size: 26px;
+    font-size: 21px;
     letter-spacing: 0.2px;
 }
 
@@ -74,7 +74,7 @@
 }
 
 .paper-list-item a {
-    font-size: 14px;
+    font-size: 20px;
     line-height: 1.5;
     color: var(--primary);
     text-decoration: underline;
@@ -82,7 +82,16 @@
 }
 
 .paper-list-item a:hover {
-    color: var(--secondary);
+    color: var(--primary);
+}
+
+/* Inline citation links should look like normal text except underline */
+.md-content a:not(.anchor),
+.md-content a:not(.anchor):visited,
+.md-content a:not(.anchor):hover {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 3px;
 }
 
 /* === Hide scrollbar visually but keep scrolling functional === */
