@@ -134,8 +134,12 @@ def embed_links(text: str, explicit_links: list[str]) -> str:
             text = text.replace(label, f'<a href="{url}">{label}</a>', 1)
 
     # Remove numeric citation markers after embedding links.
-    text = re.sub(r"([.!?”])\s*([1-9])(?=\s|$)", r"\1", text)
-    text = re.sub(r"([A-Za-z”\)])([1-9])(?=\s)", r"\1", text)
+    # Example PDF text: cited sentence.3
+    # If --link wrapped the cited sentence, it becomes <a ...>cited sentence.</a>3;
+    # remove that trailing citation number too.
+    text = re.sub(r"(</a>)\s*([1-9]|1[0-9])(?=\s|$)", r"\1", text)
+    text = re.sub(r"([.!?”])\s*([1-9]|1[0-9])(?=\s|$)", r"\1", text)
+    text = re.sub(r"([A-Za-z”\)])([1-9]|1[0-9])(?=\s)", r"\1", text)
 
     # Convert raw URLs into links without changing visible URL text.
     def repl(match: re.Match[str]) -> str:
