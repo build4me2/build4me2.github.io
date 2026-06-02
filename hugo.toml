@@ -25,11 +25,11 @@ theme = 'PaperMod'
   defaultTheme = "auto"
   ShowReadingTime = true
   ShowShareButtons = false
-  ShowPostNavLinks = true
+  ShowPostNavLinks = false
   ShowBreadCrumbs = true
   ShowCodeCopyButtons = true
   ShowWordCount = true
-  ShowToc = true
+  ShowToc = false
 
   # Social links in header
 

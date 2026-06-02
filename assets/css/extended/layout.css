@@ -62,6 +62,29 @@
     height: 18px;
 }
 
+/* === Blog post list: simple title links only === */
+.paper-list {
+    list-style: none;
+    padding: 0;
+    margin: 18px 0 0;
+}
+
+.paper-list-item {
+    margin: 8px 0;
+}
+
+.paper-list-item a {
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--primary);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.paper-list-item a:hover {
+    color: var(--secondary);
+}
+
 /* === Hide scrollbar visually but keep scrolling functional === */
 html, body {
     scrollbar-width: none;          /* Firefox */
