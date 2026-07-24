@@ -31,6 +31,7 @@
 {{- range $paginator.Pages }}
   <li class="paper-list-item">
     <a href="{{ .Permalink }}">{{ .Title }}</a>
+    <span class="paper-list-date">{{ .Date.Format "Jan 2, 2006" }}</span>
   </li>
 {{- end }}
 </ul>

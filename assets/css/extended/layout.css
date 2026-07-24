@@ -62,7 +62,7 @@
     height: 18px;
 }
 
-/* === Blog post list: simple title links only === */
+/* === Blog post list: title links with muted date on the right === */
 .paper-list {
     list-style: none;
     padding: 0;
@@ -70,7 +70,11 @@
 }
 
 .paper-list-item {
-    margin: 8px 0;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    margin: 14px 0;
 }
 
 .paper-list-item a {
@@ -83,6 +87,20 @@
 
 .paper-list-item a:hover {
     color: var(--primary);
+}
+
+.paper-list-date {
+    flex-shrink: 0;
+    color: var(--secondary);
+    font-size: 14px;
+    white-space: nowrap;
+}
+
+@media screen and (max-width: 600px) {
+    .paper-list-item {
+        flex-direction: column;
+        gap: 2px;
+    }
 }
 
 /* Inline citation links should look like normal text except underline */
@@ -135,4 +153,42 @@ body {
 /* When the body content is short, main absorbs the remaining height */
 body > .main {
     flex: 1 0 auto;
+}
+
+/* === Footer: centered social icons + copyright === */
+.site-footer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 28px 16px 32px;
+    border-top: 1px solid var(--border);
+    margin-top: 40px;
+}
+
+.site-footer .social-icons {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.site-footer .social-icons a {
+    display: inline-flex;
+    color: var(--secondary);
+    transition: color 0.2s ease, transform 0.15s ease;
+}
+
+.site-footer .social-icons a:hover {
+    color: var(--primary);
+    transform: translateY(-1px);
+}
+
+.site-footer .social-icons svg {
+    width: 20px;
+    height: 20px;
+}
+
+.site-footer-copyright {
+    color: var(--secondary);
+    font-size: 13px;
 }

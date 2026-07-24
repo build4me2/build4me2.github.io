@@ -15,13 +15,14 @@ theme = 'PaperMod'
 # --- Params ---
 [params]
   env = "production"
+  description = "Essays on technology, law, and ethics by Manisha Chand."
   defaultTheme = "auto"
   ShowReadingTime = true
   ShowShareButtons = false
   ShowPostNavLinks = false
   ShowBreadCrumbs = true
   ShowCodeCopyButtons = true
-  ShowWordCount = true
+  ShowWordCount = false
   ShowToc = false
 
   # Social links in header

@@ -4,7 +4,6 @@ date = 2026-02-24T09:00:00-08:00
 draft = false
 slug = "technology-companies-know-too-much-about-us"
 hideSummary = true
-hideMeta = true
 ShowToc = false
 +++
 
