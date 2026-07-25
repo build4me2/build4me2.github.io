@@ -140,14 +140,17 @@ body::-webkit-scrollbar {
     height: 0;
 }
 
-/* === Empty home page fits viewport exactly (no extra space below) === */
+/* === Sticky footer: short pages fill the viewport, footer stays at the bottom === */
 body {
+    display: flex;
+    flex-direction: column;
     min-height: 100vh;
     margin: 0;
 }
 
 .main {
     min-height: 0;
+    width: 100%;
 }
 
 /* When the body content is short, main absorbs the remaining height */
@@ -160,10 +163,10 @@ body > .main {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 10px;
-    padding: 28px 16px 32px;
+    gap: 7px;
+    padding: 20px 16px 22px;
     border-top: 1px solid var(--border);
-    margin-top: 40px;
+    margin-top: 28px;
 }
 
 .site-footer .social-icons {

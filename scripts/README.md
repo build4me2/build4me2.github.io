@@ -2,6 +2,12 @@
 
 Use `scripts/post_from_file.py` to convert a `.pdf` or `.txt` file into a Hugo Markdown post using the blog's current format: cover/header removed, clean body paragraphs preserved, citation numbers removed after inline links are embedded.
 
+Blog rule: **every cited sentence must carry its source link embedded inline.** PDF hyperlinks are annotations that plain text extraction drops, so the script now recovers them itself:
+
+1. It reads every hyperlink annotation in the PDF (via `pdftohtml`).
+2. Links anchored on numbered footnotes are embedded automatically on the sentence that carries that footnote marker in the body.
+3. At the end it cross-checks: any PDF source link still missing from the post is printed as a WARNING with a ready-made `--link` flag to copy. Do not publish a post while that warning lists missing sources — for APA author-year papers (no footnote numbers), add each source with `--link 'cited text=URL'`.
+
 Examples:
 
 ```bash
