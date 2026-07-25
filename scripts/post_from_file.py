@@ -182,8 +182,26 @@ def parse_body(raw: str, title: str, keep_references: bool) -> str:
     blocks = [re.sub(r"\s+", " ", block).strip().strip('"') for block in blocks]
     blocks = [block.replace(" .", ".").replace(" ,", ",") for block in blocks if block]
 
-    while blocks and (blocks[0].strip('"') in {title, title_short} or blocks[0].startswith(title_short)):
+    # Drop leading blocks that merely repeat the post title (the theme already
+    # renders the title as the page heading), comparing loosely so quoted or
+    # re-punctuated variants of the title are caught too.
+    def normalized(value: str) -> str:
+        return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
+
+    while blocks and (
+        blocks[0].strip('"') in {title, title_short}
+        or blocks[0].startswith(title_short)
+        or normalized(blocks[0]) == normalized(title)
+    ):
         blocks.pop(0)
+
+    # Collapse accidental consecutive duplicate paragraphs from PDF extraction.
+    deduped: list[str] = []
+    for block in blocks:
+        if deduped and normalized(block) == normalized(deduped[-1]):
+            continue
+        deduped.append(block)
+    blocks = deduped
 
     paragraphs: list[str] = []
     for block in blocks:
