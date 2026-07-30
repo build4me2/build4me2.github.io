@@ -33,6 +33,7 @@ class DeterministicBuildTests(unittest.TestCase):
                 self.assertEqual(environment["LC_ALL"], "C.UTF-8")
                 self.assertEqual(environment["SOURCE_DATE_EPOCH"], builder.SOURCE_DATE_EPOCH)
                 self.assertIn("--cleanDestinationDir", command)
+                self.assertIn("--buildFuture", command)
                 self.assertIn("--ignoreCache", command)
                 self.assertEqual(command[command.index("--clock") + 1], builder.BUILD_CLOCK)
                 self.assertEqual(command[command.index("--environment") + 1], "production")

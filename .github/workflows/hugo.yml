@@ -25,18 +25,26 @@ env:
 
 jobs:
   validate-build:
-    name: Validate and build
+    name: Clean recursive-checkout acceptance
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
-      - name: Checkout
+      - name: Clean recursive checkout
         uses: actions/checkout@v4
         with:
           submodules: recursive
           fetch-depth: 0
 
-      - name: Setup Hugo
+      - name: Confirm recursive submodules are initialized
+        run: |
+          git submodule update --init --recursive
+          if git submodule status --recursive | grep -q '^-'; then
+            echo 'ERROR: recursive checkout left an uninitialized submodule' >&2
+            exit 1
+          fi
+
+      - name: Setup pinned Hugo Extended
         uses: peaceiris/actions-hugo@v3
         with:
           hugo-version: '${{ env.HUGO_VERSION }}'
@@ -50,6 +58,9 @@ jobs:
 
       - name: Build validated deployment output
         run: make build
+
+      - name: Check home and four established routes in deployment output
+        run: make verify-routes
 
       - name: Preserve validated site for approved deployment
         if: >-

@@ -7,7 +7,9 @@ git clone --recurse-submodules <repository-url>
 cd <repository>
 hugo version # must be Hugo Extended 0.162.0
 make validate
+make reproducible
 make build
+make verify-routes
 ```
 
 `make setup` is the deterministic, network-free alternative when the PaperMod
@@ -26,6 +28,10 @@ explained in [preservation-baselines.md](preservation-baselines.md).
   clean builds with separate empty caches and compares a path-sorted SHA-256
   manifest. It fails with sorted per-path diagnostics if a path or any generated
   byte differs.
+- `make verify-routes` checks the built deployment tree (without starting a
+  server or accessing the network) for a non-empty home route, all four
+  established article routes and titles, and every established home-list link.
+  It reads the same preservation baseline used by the complete suite.
 - `make validate` runs the complete offline test and preservation suite through
   `scripts/run_validation.py`. The runner globally sorts test IDs and normalizes
   checkout paths, randomized temporary fixture/build roots, object addresses,
@@ -38,8 +44,11 @@ a second set of Hugo flags.
 
 ## Pull-request CI and deployment gate
 
-The `.github/workflows/hugo.yml` workflow runs `make validate`, `make reproducible`,
-and `make build` for every pull request, main-branch push, and manual dispatch.
+The `.github/workflows/hugo.yml` clean recursive-checkout acceptance job initializes
+recursive submodules, installs pinned Hugo Extended, and runs `make validate`,
+`make reproducible`, `make build`, and `make verify-routes` for every pull request,
+main-branch push, and manual dispatch. Thus the route check applies to the exact
+clean deployment output, after the real isolated two-build byte comparison.
 The shared validation/build job has only read access to repository contents; pull
 requests receive no Pages write or OIDC token permission and cannot execute any
 packaging or deployment job.
@@ -66,7 +75,10 @@ uses a fresh temporary cache, and fixes these inputs for every invocation:
 | `LANG`, `LC_ALL` | `C.UTF-8` |
 
 The fixed Hugo clock makes templates such as the existing copyright year stable;
-it does not alter essay dates or prose. Generated files are compared byte for
+it does not alter essay dates or prose. The build passes `--buildFuture` because
+that fixed clock predates established publication dates; this keeps all four
+established routes in deterministic output just as they appear in the live site.
+Generated files are compared byte for
 byte and are **not** rewritten or normalized. The only metadata excluded from
 the reproducibility manifest is host filesystem metadata—mtime, ownership, and
 permission bits—because Hugo assigns invocation-time mtimes and GitHub Pages

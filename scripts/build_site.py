@@ -116,6 +116,9 @@ def _build(destination: Path, cache: Path) -> None:
     command = [
         "hugo",
         "--cleanDestinationDir",
+        # The fixed build clock predates some established publication dates;
+        # include them explicitly so deterministic output matches the live site.
+        "--buildFuture",
         "--noBuildLock",
         "--ignoreCache",
         "--minify",

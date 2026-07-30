@@ -1,4 +1,4 @@
-.PHONY: setup validate build reproducible
+.PHONY: setup validate build reproducible verify-routes
 
 setup:
 	python3 scripts/setup_pinned_theme.py
@@ -11,3 +11,6 @@ build:
 
 reproducible:
 	python3 scripts/build_site.py --verify-reproducible
+
+verify-routes:
+	python3 scripts/verify_built_routes.py
