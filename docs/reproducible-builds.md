@@ -31,6 +31,22 @@ explained in [preservation-baselines.md](preservation-baselines.md).
 GitHub Pages uses the same build script after validation rather than maintaining
 a second set of Hugo flags.
 
+## Pull-request CI and deployment gate
+
+The `.github/workflows/hugo.yml` workflow runs `make validate`, `make reproducible`,
+and `make build` for every pull request, main-branch push, and manual dispatch.
+The shared validation/build job has only read access to repository contents; pull
+requests receive no Pages write or OIDC token permission and cannot execute any
+packaging or deployment job.
+
+For a push to `main` or a manual dispatch, the successful shared job uploads its
+already-validated `public/` output. A dependent Pages-packaging job downloads
+that exact output (it does not rebuild), and the deployment job can run only
+after both dependencies succeed. Pages write and OIDC permissions are scoped to
+the approved-event jobs that need them. Recursive submodule checkout, serialized
+Pages concurrency, the `github-pages` environment, and the existing Pages action
+pipeline remain in effect.
+
 ## Deterministic environment contract
 
 The build entry point verifies Hugo Extended **0.162.0**, disables cache reuse,
