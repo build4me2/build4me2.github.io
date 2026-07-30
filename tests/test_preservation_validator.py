@@ -21,6 +21,40 @@ SPEC.loader.exec_module(validator)
 
 
 class SourcePreservationTests(unittest.TestCase):
+    def test_hugo_toolchain_preflight_reports_version_and_edition_mismatches(self) -> None:
+        expected = "0.162.0"
+        cases = [
+            (
+                "hugo v0.161.0+extended linux/amd64\n",
+                "Hugo toolchain mismatch: found Hugo Extended 0.161.0; "
+                "expected Hugo Extended 0.162.0",
+            ),
+            (
+                "hugo v0.162.0 linux/amd64\n",
+                "Hugo toolchain mismatch: found Hugo 0.162.0; "
+                "expected Hugo Extended 0.162.0",
+            ),
+        ]
+        for output, diagnostic in cases:
+            with self.subTest(output=output):
+                errors: list[str] = []
+                result = subprocess.CompletedProcess([], 0, output, "")
+                with mock.patch.object(validator.subprocess, "run", return_value=result):
+                    self.assertFalse(validator.validate_hugo_toolchain(expected, True, errors))
+                self.assertEqual(errors, [diagnostic])
+
+        extended_env = (
+            "hugo v0.162.0 linux/amd64\n"
+            'github.com/bep/golibsass="v1.2.0"\n'
+        )
+        errors = []
+        with mock.patch.object(
+            validator.subprocess, "run",
+            return_value=subprocess.CompletedProcess([], 0, extended_env, ""),
+        ):
+            self.assertTrue(validator.validate_hugo_toolchain(expected, True, errors))
+        self.assertEqual(errors, [])
+
     def test_theme_checkout_preflight_names_uninitialized_and_mismatched_worktrees(self) -> None:
         expected = "a" * 40
         gitlink = subprocess.CompletedProcess([], 0, f"160000 {expected} 0\tthemes/PaperMod\n", "")

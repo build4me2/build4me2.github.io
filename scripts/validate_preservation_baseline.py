@@ -27,6 +27,7 @@ PRESENTATION_ROOTS = {
     "extendedCss": Path("assets/css/extended"),
     "layouts": Path("layouts"),
 }
+HUGO_VERSION_PATTERN = re.compile(r"\bhugo v(?P<version>\d+\.\d+\.\d+)(?:[-+][^\s]+)?")
 
 
 def digest(data: bytes | str) -> str:
@@ -178,6 +179,40 @@ def fail(errors: list[str], message: str) -> None:
     errors.append(message)
 
 
+def validate_hugo_toolchain(expected_version: str, require_extended: bool, errors: list[str]) -> bool:
+    """Fail before rendering when the local Hugo binary differs from the contract."""
+    expected_name = f"Hugo{' Extended' if require_extended else ''} {expected_version}"
+    try:
+        result = subprocess.run(
+            ["hugo", "env", "--logLevel", "debug"],
+            cwd=ROOT, text=True, capture_output=True, timeout=15,
+        )
+    except FileNotFoundError:
+        fail(errors, f"Hugo toolchain mismatch: {expected_name} is required, but 'hugo' was not found")
+        return False
+    except subprocess.TimeoutExpired:
+        fail(errors, f"Hugo toolchain mismatch: could not identify installed Hugo within 15 seconds; expected {expected_name}")
+        return False
+
+    output = result.stdout or result.stderr
+    first_line = output.splitlines()[0].strip() if output.splitlines() else ""
+    match = HUGO_VERSION_PATTERN.search(first_line)
+    if result.returncode or match is None:
+        observed = first_line or f"hugo env exited with status {result.returncode}"
+        fail(errors, f"Hugo toolchain mismatch: could not parse {observed!r}; expected {expected_name}")
+        return False
+
+    actual_version = match.group("version")
+    # Older Extended releases identify themselves with "+extended". Newer
+    # releases expose the same capability through the embedded LibSass module.
+    is_extended = "+extended" in first_line or "github.com/bep/golibsass=" in output
+    if actual_version != expected_version or (require_extended and not is_extended):
+        actual_name = f"Hugo{' Extended' if is_extended else ''} {actual_version}"
+        fail(errors, f"Hugo toolchain mismatch: found {actual_name}; expected {expected_name}")
+        return False
+    return True
+
+
 def json_type(value: Any) -> str:
     """Return JSON terminology rather than Python implementation types."""
     if value is None:
@@ -255,6 +290,11 @@ def validate_baseline_schema(baseline: Any) -> list[str]:
     if isinstance(policy, dict):
         for name in ("purpose", "approvedReconciliation", "prohibitedChanges"):
             string_field(policy, "$.policy", name)
+
+    hugo_version = string_field(root, "$", "hugoVersion")
+    if hugo_version is not None and not re.fullmatch(r"\d+\.\d+\.\d+", hugo_version):
+        fail(errors, "$.hugoVersion: expected an exact semantic version such as '0.162.0'")
+    field(root, "$", "hugoExtended", bool)
 
     paper_commit = string_field(root, "$", "paperModCommit")
     if paper_commit is not None and not re.fullmatch(r"[0-9a-f]{40}", paper_commit):
@@ -532,12 +572,15 @@ def main() -> int:
         return 1
 
     errors: list[str] = []
+    toolchain_ready = validate_hugo_toolchain(
+        baseline["hugoVersion"], baseline["hugoExtended"], errors
+    )
     theme_ready = validate_sources(baseline, errors)
 
     # Do not let Hugo's template lookup obscure an absent or stale submodule.
     # Source-only diagnostics still verify the worktree because it is a pinned
     # build input, while the full render only starts after this preflight passes.
-    if not args.source_only and theme_ready:
+    if not args.source_only and toolchain_ready and theme_ready:
         with tempfile.TemporaryDirectory(prefix="hugo-preservation-") as temp:
             build_root = Path(temp)
             destination = build_root / "site"

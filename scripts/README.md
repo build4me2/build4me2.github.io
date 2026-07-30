@@ -25,9 +25,10 @@ scripts/post_from_file.py "/path/to/paper.pdf" \
 
 Important: use `--link 'exact cited text=URL'` for each numbered citation you want embedded. The visible cited text stays the same; it only becomes underlined/clickable. If the PDF has a citation marker immediately after that text, like `...positive outcome in that regard.3`, the script removes the trailing number after embedding the link.
 
-After creating a post:
+After creating a post, use the repository-pinned Hugo Extended 0.162.0 toolchain (see `docs/preservation-baselines.md`):
 
 ```bash
+python3 scripts/validate_preservation_baseline.py
 hugo --minify
 git add content/posts/<slug>.md
 git commit -m "Add blog post"

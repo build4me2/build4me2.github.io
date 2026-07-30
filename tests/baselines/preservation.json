@@ -6,6 +6,8 @@
     "approvedReconciliation": "Only citation destination or front-matter corrections documented in tests/baselines/review-records.json may update this baseline.",
     "prohibitedChanges": "Essay arguments, typography, layout, colors, listing design, header/footer behavior, and light/dark toggle behavior are not reconciliation changes."
   },
+  "hugoVersion": "0.162.0",
+  "hugoExtended": true,
   "paperModCommit": "154d006e0182dfc7da38008323976b02e6bfab4a",
   "presentationFileSets": {
     "extendedCss": [

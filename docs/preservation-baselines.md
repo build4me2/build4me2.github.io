@@ -4,11 +4,14 @@ Run the offline preservation check from the repository root:
 
 ```sh
 git submodule update --init --recursive
+hugo version # must report v0.162.0 with Extended capabilities
 python3 scripts/validate_preservation_baseline.py
 python3 -m unittest discover -s tests -p 'test_*.py' -v
 ```
 
-The full `python3 scripts/validate_preservation_baseline.py` invocation is the required acceptance command; a `--source-only` run is diagnostic only and does not satisfy acceptance. Initialize the pinned submodule first. The validator checks both the committed PaperMod gitlink and the checked-out worktree commit before invoking Hugo; an absent or stale checkout reports the exact `git submodule update --init --recursive` recovery command instead of an indirect template error. The full check builds with an isolated cache in a temporary directory and leaves no `public/` tree. The mutation tests are also offline: they use temporary fixtures to prove that empty HTTP route responses, missing routes, titles, listing entries, header/footer/theme-toggle markers, prose segments, configuration, templates, and styles produce focused failures.
+The rendering toolchain is pinned to **Hugo Extended 0.162.0**. Install that exact Extended release from the [Hugo releases](https://github.com/gohugoio/hugo/releases/tag/v0.162.0) before validating; do not substitute a newer patch or a standard build. GitHub Pages uses the same exact version through `HUGO_VERSION` in `.github/workflows/hugo.yml`.
+
+The full `python3 scripts/validate_preservation_baseline.py` invocation is the required acceptance command; a `--source-only` run is diagnostic only and does not satisfy acceptance. Both modes first inspect the local `hugo env` output without accessing the network and report the expected and observed toolchains on a version or Extended-capability mismatch. Initialize the pinned submodule first. The validator checks both the committed PaperMod gitlink and the checked-out worktree commit before invoking Hugo; an absent or stale checkout reports the exact `git submodule update --init --recursive` recovery command instead of an indirect template error. The full check builds with an isolated cache in a temporary directory and leaves no `public/` tree. The mutation tests are also offline: they use temporary fixtures to prove that toolchain mismatches, empty HTTP route responses, missing routes, titles, listing entries, header/footer/theme-toggle markers, prose segments, configuration, templates, and styles produce focused failures.
 
 ## What is protected
 
@@ -20,7 +23,7 @@ The full `python3 scripts/validate_preservation_baseline.py` invocation is the r
 - the established articles' presence and relative order on the home page;
 - canonical rendered element structure for the home and article pages;
 - complete, sorted file inventories and hashes for local layouts and extended CSS, including header, footer, listing, citation, and theme-toggle overrides (new override files are rejected);
-- behavior-relevant Hugo settings (including `defaultTheme = "auto"`) and the PaperMod gitlink commit.
+- the exact Hugo Extended version, behavior-relevant Hugo settings (including `defaultTheme = "auto"`), and the PaperMod gitlink commit.
 
 The validator checks the baseline schema before reading any fixture values. Missing fields, incorrect JSON types, malformed hashes, and an incorrect established-entry count fail with sorted JSON-path diagnostics and no traceback. It then fails with a focused diagnostic when any protected value changes. It does not access the network and uses only Python's standard library, Git, and the locally installed Hugo executable.
 
