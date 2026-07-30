@@ -25,12 +25,13 @@ scripts/post_from_file.py "/path/to/paper.pdf" \
 
 Important: use `--link 'exact cited text=URL'` for each numbered citation you want embedded. The visible cited text stays the same; it only becomes underlined/clickable. If the PDF has a citation marker immediately after that text, like `...positive outcome in that regard.3`, the script removes the trailing number after embedding the link.
 
-After creating a post, use the repository-pinned Hugo Extended 0.162.0 toolchain (see `docs/preservation-baselines.md`):
+After creating a post, use the repository-pinned Hugo Extended 0.162.0 toolchain (see `docs/preservation-baselines.md` and `docs/reproducible-builds.md`):
 
 ```bash
-python3 scripts/setup_pinned_theme.py # deterministic offline PaperMod setup
-python3 scripts/validate_preservation_baseline.py
-hugo --minify
+make setup # deterministic offline PaperMod setup
+make validate
+make reproducible
+make build # always replaces public/ with a clean deterministic build
 git add content/posts/<slug>.md
 git commit -m "Add blog post"
 git push origin main

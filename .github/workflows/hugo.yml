@@ -41,8 +41,11 @@ jobs:
       - name: Validate pinned toolchain and preservation contract
         run: python3 scripts/validate_preservation_baseline.py
 
-      - name: Build with Hugo
-        run: hugo --minify
+      - name: Verify reproducible clean build
+        run: python3 scripts/build_site.py --verify-reproducible
+
+      - name: Build with deterministic entry point
+        run: python3 scripts/build_site.py
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
