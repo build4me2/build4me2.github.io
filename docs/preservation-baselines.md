@@ -8,7 +8,7 @@ python3 scripts/validate_preservation_baseline.py
 python3 -m unittest discover -s tests -p 'test_*.py' -v
 ```
 
-Use `--source-only` only when Hugo is unavailable. The full check builds with an isolated cache in a temporary directory and leaves no `public/` tree. The mutation tests are also offline: they use temporary fixtures to prove that route, prose-segment, configuration, template, and style changes produce focused failures.
+The full `python3 scripts/validate_preservation_baseline.py` invocation is the required acceptance command; a `--source-only` run is diagnostic only and does not satisfy acceptance. Initialize the pinned submodule first. The full check builds with an isolated cache in a temporary directory and leaves no `public/` tree. The mutation tests are also offline: they use temporary fixtures to prove that empty or missing routes, titles, listing entries, header/footer/theme-toggle markers, prose segments, configuration, templates, and styles produce focused failures.
 
 ## What is protected
 

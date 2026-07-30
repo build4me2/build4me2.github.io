@@ -107,6 +107,111 @@ class SourcePreservationTests(unittest.TestCase):
 
 
 class RenderedPreservationTests(unittest.TestCase):
+    @staticmethod
+    def _write_smoke_fixture(destination: Path) -> dict[str, object]:
+        route = "/established-route/"
+        home_html = """<html><body><header class="header"><nav class="header-nav"></nav><button id="theme-toggle" class="theme-toggle"></button></header><main><header class="page-header"></header><ul class="paper-list"><li class="paper-list-item"><a href="/established-route/">Established title</a><span class="paper-list-date">Jan 2, 2026</span></li></ul></main><footer class="footer site-footer"></footer></body></html>"""
+        article_html = """<html><body><header class="header"><nav class="header-nav"></nav><button id="theme-toggle" class="theme-toggle"></button></header><main><article class="post-single"><header class="post-header"><h1 class="post-title entry-hint-parent">Established title</h1></header><div class="post-content md-content">Established prose.</div></article></main><footer class="footer site-footer"></footer></body></html>"""
+        article_path = destination / route.strip("/") / "index.html"
+        article_path.parent.mkdir(parents=True)
+        (destination / "index.html").write_text(home_html, encoding="utf-8")
+        article_path.write_text(article_html, encoding="utf-8")
+        home = validator.parse_html(destination / "index.html")
+        article = validator.parse_html(article_path)
+        return {
+            "homeListing": [{
+                "route": route, "title": "Established title", "date": "Jan 2, 2026",
+            }],
+            "articles": [{
+                "route": route,
+                "frontMatter": {"title": "Established title"},
+                "renderedProseSha256": validator.digest("Established prose."),
+                "citationDestinations": [],
+                "renderedStructureSha256": validator.digest("\n".join(article.structure)),
+            }],
+            "renderedContract": {
+                "homeStructureSha256": validator.digest("\n".join(home.structure)),
+                "homeMarkers": ["<header.page-header>", "<ul.paper-list>", "<li.paper-list-item>"],
+                "articleMarkers": [
+                    "<article.post-single>", "<header.post-header>",
+                    "<h1.entry-hint-parent.post-title>", "<div.md-content.post-content>",
+                ],
+                "siteMarkers": [
+                    "<header.header>", "<nav.header-nav>",
+                    "<button#theme-toggle.theme-toggle>", "<footer.footer.site-footer>",
+                ],
+            },
+        }
+
+    def test_route_smoke_contract_rejects_title_listing_and_article_shell_mutations(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            destination = Path(temporary)
+            baseline = self._write_smoke_fixture(destination)
+            errors: list[str] = []
+            validator.validate_rendered(baseline, destination, errors)
+            self.assertEqual(errors, [])
+
+            article_path = destination / "established-route" / "index.html"
+            original_article = article_path.read_text(encoding="utf-8")
+            article_path.write_text(
+                original_article.replace("Established title", "Changed title"), encoding="utf-8"
+            )
+            errors = []
+            validator.validate_rendered(baseline, destination, errors)
+            self.assertIn("rendered title changed at /established-route/", errors)
+
+            shell_mutations = [
+                ('<header class="header">', "<header>", "<header.header>"),
+                ('<nav class="header-nav">', "<nav>", "<nav.header-nav>"),
+                (
+                    '<button id="theme-toggle" class="theme-toggle"></button>',
+                    "<button></button>",
+                    "<button#theme-toggle.theme-toggle>",
+                ),
+                ('<footer class="footer site-footer">', "<footer>", "<footer.footer.site-footer>"),
+            ]
+            for established, changed, marker in shell_mutations:
+                with self.subTest(marker=marker):
+                    article_path.write_text(
+                        original_article.replace(established, changed), encoding="utf-8"
+                    )
+                    errors = []
+                    validator.validate_rendered(baseline, destination, errors)
+                    self.assertIn(
+                        f"article route /established-route/ missing header/footer/theme marker {marker}",
+                        errors,
+                    )
+
+            article_path.write_text(original_article, encoding="utf-8")
+            home_path = destination / "index.html"
+            home_path.write_text(
+                home_path.read_text(encoding="utf-8").replace(
+                    "Established title</a>", "Changed listing title</a>"
+                ),
+                encoding="utf-8",
+            )
+            errors = []
+            validator.validate_rendered(baseline, destination, errors)
+            self.assertIn(
+                "home listing presence, title, date, or established post ordering changed", errors
+            )
+
+    def test_empty_rendered_pages_are_rejected_explicitly(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            destination = Path(temporary)
+            baseline = self._write_smoke_fixture(destination)
+            (destination / "established-route" / "index.html").write_text(" \n", encoding="utf-8")
+            errors: list[str] = []
+            validator.validate_rendered(baseline, destination, errors)
+            self.assertIn(
+                "article route /established-route/ rendered an empty index.html", errors
+            )
+
+            (destination / "index.html").write_text("\n", encoding="utf-8")
+            errors = []
+            validator.validate_rendered(baseline, destination, errors)
+            self.assertEqual(errors, ["home route / rendered an empty index.html"])
+
     def test_missing_article_output_names_the_route(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             destination = Path(temporary)
@@ -186,9 +291,9 @@ class CliTests(unittest.TestCase):
             ["$: expected object, got array"],
         )
 
-    def test_source_only_cli_is_network_free_and_successful(self) -> None:
+    def test_full_acceptance_cli_is_network_free_and_successful(self) -> None:
         result = subprocess.run(
-            ["python3", "scripts/validate_preservation_baseline.py", "--source-only"],
+            ["python3", "scripts/validate_preservation_baseline.py"],
             cwd=ROOT,
             text=True,
             capture_output=True,

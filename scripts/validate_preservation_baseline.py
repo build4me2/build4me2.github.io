@@ -155,6 +155,11 @@ def parse_html(path: Path) -> PageParser:
     return parser
 
 
+def is_empty_page(path: Path) -> bool:
+    """Treat zero-length and whitespace-only output as a failed route render."""
+    return not path.read_text(encoding="utf-8").strip()
+
+
 def hugo_diagnostic(output: str, destination: Path) -> str:
     """Keep Hugo failures useful while removing machine-specific and volatile data."""
     value = output.replace(str(destination), "<destination>").replace(str(ROOT), "<repository>")
@@ -421,6 +426,9 @@ def validate_rendered(baseline: dict[str, Any], destination: Path, errors: list[
     if not home_path.is_file():
         fail(errors, "home route / did not render index.html")
         return
+    if is_empty_page(home_path):
+        fail(errors, "home route / rendered an empty index.html")
+        return
     home = parse_html(home_path)
     established_routes = {item["route"] for item in baseline["homeListing"]}
     actual_listing = [
@@ -435,13 +443,18 @@ def validate_rendered(baseline: dict[str, Any], destination: Path, errors: list[
         if marker not in home.structure:
             fail(errors, f"home page missing rendered structure marker {marker}")
 
+    rendered_pages: list[tuple[str, PageParser]] = [("home route /", home)]
     for article in baseline["articles"]:
         route = article["route"]
         page_path = destination / route.strip("/") / "index.html"
         if not page_path.is_file():
             fail(errors, f"article route {route} did not render index.html")
             continue
+        if is_empty_page(page_path):
+            fail(errors, f"article route {route} rendered an empty index.html")
+            continue
         page = parse_html(page_path)
+        rendered_pages.append((f"article route {route}", page))
         if normalized_text("".join(page.title_text)) != article["frontMatter"]["title"]:
             fail(errors, f"rendered title changed at {article['route']}")
         if digest(normalized_text("".join(page.content_text))) != article["renderedProseSha256"]:
@@ -454,10 +467,13 @@ def validate_rendered(baseline: dict[str, Any], destination: Path, errors: list[
             if marker not in page.structure:
                 fail(errors, f"{article['route']} missing rendered structure marker {marker}")
 
-    combined = "\n".join(home.structure)
-    for marker in baseline["renderedContract"]["siteMarkers"]:
-        if marker not in combined:
-            fail(errors, f"rendered site missing header/footer/theme marker {marker}")
+    # Header, footer, and light/dark toggle behavior are a per-route contract,
+    # not merely a home-page contract.  Checking every rendered route prevents a
+    # valid home shell from hiding a blank or stripped article template.
+    for route_name, page in rendered_pages:
+        for marker in baseline["renderedContract"]["siteMarkers"]:
+            if marker not in page.structure:
+                fail(errors, f"{route_name} missing header/footer/theme marker {marker}")
 
 
 def main() -> int:
