@@ -28,6 +28,7 @@ Important: use `--link 'exact cited text=URL'` for each numbered citation you wa
 After creating a post, use the repository-pinned Hugo Extended 0.162.0 toolchain (see `docs/preservation-baselines.md`):
 
 ```bash
+python3 scripts/setup_pinned_theme.py # deterministic offline PaperMod setup
 python3 scripts/validate_preservation_baseline.py
 hugo --minify
 git add content/posts/<slug>.md

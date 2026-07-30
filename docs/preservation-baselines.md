@@ -1,13 +1,21 @@
 # Content and presentation preservation baseline
 
-Initialize the repository's pinned build inputs, then run the scoped validation
-entrypoint from the repository root:
+Initialize the repository's pinned build inputs, then run the exact scoped
+validation entrypoint from the repository root:
 
 ```sh
-git submodule update --init --recursive
+python3 scripts/setup_pinned_theme.py
 hugo version # must report v0.162.0 with Extended capabilities
 python3 -m unittest discover -s tests -p 'test_*.py'
 ```
+
+`setup_pinned_theme.py` verifies and expands the committed PaperMod snapshot,
+reconstructs its exact `154d006e0182dfc7da38008323976b02e6bfab4a` Git checkout,
+and performs no clone, fetch, or other network operation. It is safe to rerun.
+This makes acceptance work in a fresh validation worktree even when submodule
+network access is disabled. A normal recursive checkout remains supported for
+contributors with network access; the offline setup command is the deterministic
+validation path.
 
 The scoped suite includes a real invocation of the full preservation validator,
 so success proves that the checked-out PaperMod commit and local Hugo binary can
@@ -22,7 +30,7 @@ python3 scripts/validate_preservation_baseline.py
 
 The rendering toolchain is pinned to **Hugo Extended 0.162.0**. Install that exact Extended release from the [Hugo releases](https://github.com/gohugoio/hugo/releases/tag/v0.162.0) before validating; do not substitute a newer patch or a standard build. GitHub Pages uses the same exact version through `HUGO_VERSION` in `.github/workflows/hugo.yml`.
 
-The full `python3 scripts/validate_preservation_baseline.py` invocation is the required acceptance command; a `--source-only` run is diagnostic only and does not satisfy acceptance. Both modes first inspect the local `hugo env` output without accessing the network and report the expected and observed toolchains on a version or Extended-capability mismatch. Initialize the pinned submodule first. The validator checks both the committed PaperMod gitlink and the checked-out worktree commit before invoking Hugo; an absent or stale checkout reports the exact `git submodule update --init --recursive` recovery command instead of an indirect template error. The full check builds with an isolated cache in a temporary directory and leaves no `public/` tree. The mutation tests are also offline: they use temporary fixtures to prove that toolchain mismatches, empty HTTP route responses, missing routes, titles, listing entries, header/footer/theme-toggle markers, prose segments, configuration, templates, and styles produce focused failures.
+The full `python3 scripts/validate_preservation_baseline.py` invocation is the required acceptance command; a `--source-only` run is diagnostic only and does not satisfy acceptance. Both modes first inspect the local `hugo env` output without accessing the network and report the expected and observed toolchains on a version or Extended-capability mismatch. Initialize the pinned theme first. The validator checks both the committed PaperMod gitlink and the checked-out worktree commit before invoking Hugo; an absent or stale checkout reports the exact offline `python3 scripts/setup_pinned_theme.py` recovery command instead of an indirect template error. The full check builds with an isolated cache in a temporary directory and leaves no `public/` tree. The mutation tests are also offline: they use temporary fixtures to prove that toolchain mismatches, empty HTTP route responses, missing routes, titles, listing entries, header/footer/theme-toggle markers, prose segments, configuration, templates, and styles produce focused failures.
 
 ## What is protected
 

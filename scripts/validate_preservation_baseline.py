@@ -661,7 +661,7 @@ def validate_theme_checkout(expected_commit: str, errors: list[str]) -> bool:
         fail(
             errors,
             "PaperMod worktree is not initialized; run "
-            "'git submodule update --init --recursive' before validation",
+            "'python3 scripts/setup_pinned_theme.py' before validation",
         )
         return False
 
@@ -674,7 +674,7 @@ def validate_theme_checkout(expected_commit: str, errors: list[str]) -> bool:
         fail(
             errors,
             f"PaperMod worktree is at {actual_commit!r}; expected pinned commit "
-            f"{expected_commit}; run 'git submodule update --init --recursive'",
+            f"{expected_commit}; run 'python3 scripts/setup_pinned_theme.py'",
         )
         return False
     return pinned_commit == expected_commit

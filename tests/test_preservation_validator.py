@@ -69,7 +69,7 @@ class SourcePreservationTests(unittest.TestCase):
                 self.assertFalse(validator.validate_theme_checkout(expected, errors))
             self.assertEqual(errors, [
                 "PaperMod worktree is not initialized; run "
-                "'git submodule update --init --recursive' before validation"
+                "'python3 scripts/setup_pinned_theme.py' before validation"
             ])
 
             (theme / "README.md").write_text("initialized\n", encoding="utf-8")
@@ -81,7 +81,7 @@ class SourcePreservationTests(unittest.TestCase):
                 self.assertFalse(validator.validate_theme_checkout(expected, errors))
             self.assertEqual(errors, [
                 f"PaperMod worktree is at {'b' * 40!r}; expected pinned commit {expected}; "
-                "run 'git submodule update --init --recursive'"
+                "run 'python3 scripts/setup_pinned_theme.py'"
             ])
 
     def test_committed_sources_match_paragraph_inventory(self) -> None:

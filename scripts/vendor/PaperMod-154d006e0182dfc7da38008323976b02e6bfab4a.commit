@@ -1,0 +1,22 @@
+tree 56f58cecea021dfd6226e75dcb10c652957be310
+parent a1788a7a5921ac1b3912e9e5364de2878df834cc
+author Aditya Telange <21258296+adityatelange@users.noreply.github.com> 1778390384 +0530
+committer Aditya Telange <21258296+adityatelange@users.noreply.github.com> 1778390806 +0530
+gpgsig -----BEGIN PGP SIGNATURE-----
+ 
+ iQIzBAABCgAdFiEEHllk3rHucOJiawZ9guhE7z2pnncFAmoAFxYACgkQguhE7z2p
+ nnezmQ/8D1LG+VsSt57XyIdN+DWndL3/z4ytFN5IHJYINto87PkPNIs3GI/XghNc
+ 6JvRB90FMIs1X/i0GR9sIZ2fuT6KVKg9xkYSQ0dgv9WwUSO4Kyl/235h6KrNgnap
+ 4raQ8R4vEdHxM6SVcCEu3wf9WwEMNUC1qdGPEafOPjLHt6IOXp9w6mnRm+Az+dlU
+ XK08JV93QgnC+NQ7zupfCNG+WyZICuFkhxdlxsHLHtaM2t8nFiX4AuHvr7v8g1oC
+ 3CEl+/WUQHXe9AcG46DAvuh0DYo/+s2MdRiaHh47MJyNMDnkm6x+Igh53t7FjzWN
+ s6Avp4zGEG4/ctquv2UfkyI7qd5FgHEZdNtVloMGqcOsn9woTUQfLRiO9qJoBYrO
+ INJY1nvhaHke3oYlfReIGJGHjS9+B72xEoW4TRoy+lk0wV8n/Nzi1K+mh9KciTL7
+ 3o/i0auhrRxSRYWDXDz6lxkKCgc0q/8oTCD4A0KwtUcmzkWe5VBzJXT3/33ToA7O
+ 3EflEMyVROJO/fmmi8+gDKkvT7NMB9cv1ia24+LqjNls0ObvYcc/xpp/faNyp9Bo
+ 6Is8d6/H0GtdtnoqXDEqAAHSYntkH9LtcuXBaZrROXoIOeAlofbVvcssgOkqPmcs
+ M7DB68TcDKjonOVP34YhbxQ5HM3u9iLr1ZYbpXZDMLEN3gW2oLw=
+ =6LuA
+ -----END PGP SIGNATURE-----
+
+style(post-single): adjust padding for details summary element
