@@ -1,25 +1,24 @@
 # Content and presentation preservation baseline
 
-Run the hermetic unit suite from the repository root, including in a fresh
-worktree whose submodule has not been initialized:
-
-```sh
-python3 -m unittest discover -s tests -p 'test_*.py'
-```
-
-Run the repository-checkout integration preflight and rendered acceptance check
-separately:
+Initialize the repository's pinned build inputs, then run the scoped validation
+entrypoint from the repository root:
 
 ```sh
 git submodule update --init --recursive
 hugo version # must report v0.162.0 with Extended capabilities
-python3 scripts/validate_preservation_baseline.py
+python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 
-Unit tests fixture the Hugo build and PaperMod checkout state where those are not
-the behavior under test. They neither initialize submodules nor access the
-network. The full validator intentionally does not mock those dependencies: it
-verifies the checked-out PaperMod commit and local Hugo binary before rendering.
+The scoped suite includes a real invocation of the full preservation validator,
+so success proves that the checked-out PaperMod commit and local Hugo binary can
+render non-empty home and article responses. It does not replace build inputs
+with mocks for that acceptance test. The remaining mutation tests use temporary
+fixtures and do not access the network. To run the same integration acceptance
+directly, use:
+
+```sh
+python3 scripts/validate_preservation_baseline.py
+```
 
 The rendering toolchain is pinned to **Hugo Extended 0.162.0**. Install that exact Extended release from the [Hugo releases](https://github.com/gohugoio/hugo/releases/tag/v0.162.0) before validating; do not substitute a newer patch or a standard build. GitHub Pages uses the same exact version through `HUGO_VERSION` in `.github/workflows/hugo.yml`.
 
