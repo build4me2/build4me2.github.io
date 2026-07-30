@@ -170,6 +170,90 @@ class SourcePreservationTests(unittest.TestCase):
                 validator.validate_article_history(article, original, [record], errors)
             self.assertIn("stale or non-matching citation review record 'example-citation-fix'", errors[1])
 
+    def test_captured_tree_rejects_rebaselined_front_matter_routes_and_presentation(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            post = root / "content/posts/example.md"
+            layout = root / "layouts/example.html"
+            style = root / "assets/css/extended/example.css"
+            post.parent.mkdir(parents=True)
+            layout.parent.mkdir(parents=True)
+            style.parent.mkdir(parents=True)
+            original_post = (
+                '+++\ntitle = "Established"\ndate = 2026-01-02T09:00:00-07:00\n'
+                'draft = false\nslug = "established"\nhideSummary = true\nShowToc = false\n'
+                '+++\n\nEstablished prose.\n'
+            )
+            post.write_text(original_post, encoding="utf-8")
+            layout.write_text("established layout\n", encoding="utf-8")
+            style.write_text("established style\n", encoding="utf-8")
+            (root / "hugo.toml").write_text("title = 'Established'\n", encoding="utf-8")
+            front, body = validator.split_post(post)
+            article = {
+                "source": "content/posts/example.md",
+                "route": "/established/",
+                "frontMatter": validator.json_front_matter(front),
+            }
+            baseline = {
+                "capturedFrom": "a" * 40,
+                "paperModCommit": "b" * 40,
+                "presentationFileSets": {
+                    "layouts": ["layouts/example.html"],
+                    "extendedCss": ["assets/css/extended/example.css"],
+                },
+                "homeListing": [{
+                    "route": "/established/", "title": "Established", "date": "Jan 2, 2026",
+                }],
+                "articles": [article],
+            }
+            historical = {
+                "content/posts/example.md": original_post.encode(),
+                "layouts/example.html": layout.read_bytes(),
+                "assets/css/extended/example.css": style.read_bytes(),
+                "hugo.toml": (root / "hugo.toml").read_bytes(),
+            }
+
+            # Rebaseline every editable fixture alongside the changes. History must still win.
+            post.write_text(original_post.replace("Established\"", "Changed\"", 1), encoding="utf-8")
+            changed_front, _ = validator.split_post(post)
+            article["frontMatter"] = validator.json_front_matter(changed_front)
+            baseline["homeListing"][0]["title"] = "Changed"
+            article["route"] = "/changed-route/"
+            layout.write_text("changed layout\n", encoding="utf-8")
+            (root / "hugo.toml").write_text("title = 'Changed'\n", encoding="utf-8")
+
+            def fake_run(command, **_kwargs):
+                if command[1:4] == ["ls-tree", "-r", "--name-only"]:
+                    return SimpleNamespace(
+                        returncode=0,
+                        stdout="assets/css/extended/example.css\nlayouts/example.html\n",
+                    )
+                return SimpleNamespace(
+                    returncode=0,
+                    stdout=f"160000 commit {'b' * 40}\tthemes/PaperMod\n",
+                )
+
+            def fake_captured(_commit, relative, _errors):
+                return historical[relative]
+
+            errors: list[str] = []
+            with mock.patch.object(validator, "ROOT", root), mock.patch.object(
+                validator, "captured_file", side_effect=fake_captured
+            ), mock.patch.object(validator.subprocess, "run", side_effect=fake_run):
+                validator.validate_preservation_history(
+                    baseline,
+                    {"records": [{"id": "initial", "kind": "baseline-capture"}]},
+                    errors,
+                )
+            self.assertIn(
+                "front matter differs from captured history without exact review: content/posts/example.md",
+                errors,
+            )
+            self.assertIn("route identity differs from captured history: content/posts/example.md", errors)
+            self.assertIn("home listing routes, titles, dates, or order differ from captured history", errors)
+            self.assertIn("protected presentation differs from captured history: layouts/example.html", errors)
+            self.assertIn("Hugo configuration differs from captured history", errors)
+
     def test_mutations_name_configuration_assets_and_prose_segment(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

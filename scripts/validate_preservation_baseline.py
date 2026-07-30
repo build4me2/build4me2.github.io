@@ -424,15 +424,31 @@ def validate_review_records_schema(document: Any) -> list[str]:
         kind = record.get("kind")
         if kind == "baseline-capture":
             continue
-        if kind != "citation-reconciliation":
+        if kind not in {"citation-reconciliation", "front-matter-reconciliation"}:
             fail(errors, f"{path}.kind: unsupported review kind {kind!r}")
             continue
-        for name in ("article", "before", "after", "reason"):
+        for name in ("article", "reason"):
             if not isinstance(record.get(name), str) or not record[name]:
                 fail(errors, f"{path}.{name}: expected non-empty string")
-        citation_index = record.get("citationIndex")
-        if not isinstance(citation_index, int) or isinstance(citation_index, bool) or citation_index < 1:
-            fail(errors, f"{path}.citationIndex: expected positive integer")
+        if kind == "citation-reconciliation":
+            for name in ("before", "after"):
+                if not isinstance(record.get(name), str) or not record[name]:
+                    fail(errors, f"{path}.{name}: expected non-empty string")
+            citation_index = record.get("citationIndex")
+            if not isinstance(citation_index, int) or isinstance(citation_index, bool) or citation_index < 1:
+                fail(errors, f"{path}.citationIndex: expected positive integer")
+        else:
+            field_name = record.get("field")
+            if field_name not in ("date", "draft", "hideSummary", "ShowToc"):
+                fail(errors, f"{path}.field: expected a reconcilable front-matter field")
+            expected_type = bool if field_name in ("draft", "hideSummary", "ShowToc") else str
+            for name in ("before", "after"):
+                value = record.get(name)
+                if not isinstance(value, expected_type) or (expected_type is str and not value):
+                    type_name = "boolean" if expected_type is bool else "non-empty string"
+                    fail(errors, f"{path}.{name}: expected {type_name}")
+            if record.get("before") == record.get("after"):
+                fail(errors, f"{path}: before and after must differ")
         evidence = record.get("verificationEvidence")
         if not isinstance(evidence, list) or not evidence or not all(
             isinstance(item, str) and item for item in evidence
@@ -478,25 +494,113 @@ def validate_article_history(
             fail(errors, f"stale or non-matching citation review record {record.get('id')!r}: {relative}")
 
 
+def captured_file(commit: str, relative: str, errors: list[str]) -> bytes | None:
+    result = subprocess.run(
+        ["git", "show", f"{commit}:{relative}"], cwd=ROOT, capture_output=True,
+    )
+    if result.returncode:
+        fail(errors, f"cannot read captured file {relative} at commit {commit!r}")
+        return None
+    return result.stdout
+
+
+def display_date(value: str) -> str:
+    parsed = datetime.fromisoformat(value)
+    return f"{parsed.strftime('%b')} {parsed.day}, {parsed.year}"
+
+
 def validate_preservation_history(
     baseline: dict[str, Any], review_document: dict[str, Any], errors: list[str]
 ) -> None:
+    """Anchor editable fixtures and current sources to the captured Git tree."""
     captured = baseline["capturedFrom"]
     records = review_document["records"]
+    expected_listing: list[tuple[str, dict[str, str]]] = []
+    consumed_front_matter_records: set[str] = set()
+
     for article in baseline["articles"]:
         relative = article["source"]
-        result = subprocess.run(
-            ["git", "show", f"{captured}:{relative}"], cwd=ROOT,
-            text=True, capture_output=True,
-        )
-        if result.returncode:
-            fail(errors, f"cannot read captured source {relative} at commit {captured!r}")
+        original = captured_file(captured, relative, errors)
+        if original is None:
             continue
         try:
-            _, original_body = split_post_text(result.stdout, f"{captured}:{relative}")
+            original_front_matter, original_body = split_post_text(
+                original.decode("utf-8"), f"{captured}:{relative}"
+            )
+            expected_front_matter = json_front_matter(original_front_matter)
+            applicable = [
+                record for record in records
+                if record.get("kind") == "front-matter-reconciliation"
+                and record.get("article") == relative
+            ]
+            for record in applicable:
+                field_name = record["field"]
+                if expected_front_matter.get(field_name) != record["before"]:
+                    fail(errors, f"stale or non-matching front-matter review record {record['id']!r}: {relative}")
+                    continue
+                expected_front_matter[field_name] = record["after"]
+                consumed_front_matter_records.add(record["id"])
+            if article["frontMatter"] != expected_front_matter:
+                fail(errors, f"front matter differs from captured history without exact review: {relative}")
+
+            # Slugs/routes and established titles are identities, not reconcilable metadata.
+            expected_route = f"/{json_front_matter(original_front_matter)['slug']}/"
+            if article["route"] != expected_route:
+                fail(errors, f"route identity differs from captured history: {relative}")
+            expected_listing.append((expected_front_matter["date"], {
+                "route": expected_route,
+                "title": expected_front_matter["title"],
+                "date": display_date(expected_front_matter["date"]),
+            }))
             validate_article_history(article, original_body, records, errors)
-        except (OSError, ValueError, tomllib.TOMLDecodeError) as exc:
+        except (OSError, UnicodeDecodeError, ValueError, tomllib.TOMLDecodeError) as exc:
             fail(errors, f"cannot compare captured source {relative} ({type(exc).__name__})")
+
+    for record in records:
+        if record.get("kind") == "front-matter-reconciliation" and record.get("id") not in consumed_front_matter_records:
+            # Records for unknown articles and duplicate/out-of-order edits cannot silently authorize anything.
+            article = record.get("article", "<unknown>")
+            message = f"stale or non-matching front-matter review record {record.get('id')!r}: {article}"
+            if message not in errors:
+                fail(errors, message)
+
+    historical_listing = [item for _, item in sorted(expected_listing, key=lambda item: item[0], reverse=True)]
+    if baseline["homeListing"] != historical_listing:
+        fail(errors, "home listing routes, titles, dates, or order differ from captured history")
+
+    # Presentation, configuration, and the theme gitlink are prohibited changes,
+    # so compare them directly to Git history rather than trusting editable hashes.
+    historical_paths_result = subprocess.run(
+        ["git", "ls-tree", "-r", "--name-only", captured, "layouts", "assets/css/extended"],
+        cwd=ROOT, text=True, capture_output=True,
+    )
+    if historical_paths_result.returncode:
+        fail(errors, f"cannot inventory presentation files at commit {captured!r}")
+    else:
+        historical_paths = sorted(filter(None, historical_paths_result.stdout.splitlines()))
+        baseline_paths = sorted(
+            path for paths in baseline["presentationFileSets"].values() for path in paths
+        )
+        if historical_paths != baseline_paths:
+            fail(errors, "presentation file inventory differs from captured history")
+        for relative in historical_paths:
+            historical = captured_file(captured, relative, errors)
+            current = ROOT / relative
+            if historical is not None and (not current.is_file() or current.read_bytes() != historical):
+                fail(errors, f"protected presentation differs from captured history: {relative}")
+
+    historical_config = captured_file(captured, "hugo.toml", errors)
+    if historical_config is not None and (ROOT / "hugo.toml").read_bytes() != historical_config:
+        fail(errors, "Hugo configuration differs from captured history")
+
+    gitlink = subprocess.run(
+        ["git", "ls-tree", captured, "themes/PaperMod"], cwd=ROOT,
+        text=True, capture_output=True,
+    )
+    fields = gitlink.stdout.split()
+    historical_commit = fields[2] if len(fields) >= 3 and fields[1] == "commit" else None
+    if gitlink.returncode or historical_commit != baseline["paperModCommit"]:
+        fail(errors, "PaperMod gitlink differs from captured history")
 
 
 def validate_presentation_file_sets(baseline: dict[str, Any], errors: list[str]) -> None:
