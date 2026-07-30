@@ -312,7 +312,7 @@ def main() -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(front_matter(args.title, date, slug) + body + "\n")
     print(f"Wrote {output}")
-    print("Review, then run: hugo --minify && git add/commit/push")
+    print("Review, then run: make validate && make reproducible && make build && make verify-routes")
 
 
 if __name__ == "__main__":

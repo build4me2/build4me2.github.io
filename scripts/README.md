@@ -32,6 +32,7 @@ make setup # deterministic offline PaperMod setup
 make validate
 make reproducible
 make build # always replaces public/ with a clean deterministic build
+make verify-routes
 git add content/posts/<slug>.md
 git commit -m "Add blog post"
 git push origin main
