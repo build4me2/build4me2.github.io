@@ -365,7 +365,47 @@ def validate_presentation_file_sets(baseline: dict[str, Any], errors: list[str])
             fail(errors, f"unexpected presentation override: {relative}")
 
 
-def validate_sources(baseline: dict[str, Any], errors: list[str]) -> None:
+def validate_theme_checkout(expected_commit: str, errors: list[str]) -> bool:
+    """Verify both the pinned gitlink and the initialized submodule worktree."""
+    gitlink = subprocess.run(
+        ["git", "ls-files", "--stage", "themes/PaperMod"], cwd=ROOT,
+        text=True, capture_output=True,
+    )
+    fields = gitlink.stdout.split()
+    pinned_commit = fields[1] if len(fields) >= 2 and fields[0] == "160000" else None
+    if pinned_commit != expected_commit:
+        fail(
+            errors,
+            f"PaperMod gitlink is {pinned_commit!r}; expected pinned commit {expected_commit}",
+        )
+
+    theme = ROOT / "themes" / "PaperMod"
+    # Git creates the submodule directory even when it has not populated the
+    # worktree, so directory existence alone is not sufficient.
+    if not theme.is_dir() or not any(theme.iterdir()):
+        fail(
+            errors,
+            "PaperMod worktree is not initialized; run "
+            "'git submodule update --init --recursive' before validation",
+        )
+        return False
+
+    checkout = subprocess.run(
+        ["git", "-C", str(theme), "rev-parse", "--verify", "HEAD"], cwd=ROOT,
+        text=True, capture_output=True,
+    )
+    actual_commit = checkout.stdout.strip() if checkout.returncode == 0 else None
+    if actual_commit != expected_commit:
+        fail(
+            errors,
+            f"PaperMod worktree is at {actual_commit!r}; expected pinned commit "
+            f"{expected_commit}; run 'git submodule update --init --recursive'",
+        )
+        return False
+    return pinned_commit == expected_commit
+
+
+def validate_sources(baseline: dict[str, Any], errors: list[str]) -> bool:
     validate_presentation_file_sets(baseline, errors)
     for relative, expected in baseline["protectedFiles"].items():
         path = ROOT / relative
@@ -374,14 +414,7 @@ def validate_sources(baseline: dict[str, Any], errors: list[str]) -> None:
         elif digest(path.read_bytes()) != expected:
             fail(errors, f"protected presentation/configuration changed: {relative}")
 
-    gitlink = subprocess.run(
-        ["git", "ls-files", "--stage", "themes/PaperMod"], cwd=ROOT,
-        text=True, capture_output=True,
-    )
-    fields = gitlink.stdout.split()
-    actual_theme_commit = fields[1] if len(fields) >= 2 and fields[0] == "160000" else None
-    if actual_theme_commit != baseline["paperModCommit"]:
-        fail(errors, f"PaperMod gitlink changed: {actual_theme_commit!r}")
+    theme_ready = validate_theme_checkout(baseline["paperModCommit"], errors)
 
     try:
         config = tomllib.loads((ROOT / "hugo.toml").read_text(encoding="utf-8"))
@@ -419,6 +452,7 @@ def validate_sources(baseline: dict[str, Any], errors: list[str]) -> None:
                 fail(errors, f"essay prose/argument changed without baseline review: {relative}")
         if source_links(body) != article["citationDestinations"]:
             fail(errors, f"citation destinations or their order changed: {relative}")
+    return theme_ready
 
 
 def validate_rendered(baseline: dict[str, Any], destination: Path, errors: list[str]) -> None:
@@ -427,7 +461,7 @@ def validate_rendered(baseline: dict[str, Any], destination: Path, errors: list[
         fail(errors, "home route / did not render index.html")
         return
     if is_empty_page(home_path):
-        fail(errors, "home route / rendered an empty index.html")
+        fail(errors, "home route / rendered an empty HTTP response (index.html)")
         return
     home = parse_html(home_path)
     established_routes = {item["route"] for item in baseline["homeListing"]}
@@ -451,7 +485,7 @@ def validate_rendered(baseline: dict[str, Any], destination: Path, errors: list[
             fail(errors, f"article route {route} did not render index.html")
             continue
         if is_empty_page(page_path):
-            fail(errors, f"article route {route} rendered an empty index.html")
+            fail(errors, f"article route {route} rendered an empty HTTP response (index.html)")
             continue
         page = parse_html(page_path)
         rendered_pages.append((f"article route {route}", page))
@@ -498,9 +532,12 @@ def main() -> int:
         return 1
 
     errors: list[str] = []
-    validate_sources(baseline, errors)
+    theme_ready = validate_sources(baseline, errors)
 
-    if not args.source_only:
+    # Do not let Hugo's template lookup obscure an absent or stale submodule.
+    # Source-only diagnostics still verify the worktree because it is a pinned
+    # build input, while the full render only starts after this preflight passes.
+    if not args.source_only and theme_ready:
         with tempfile.TemporaryDirectory(prefix="hugo-preservation-") as temp:
             build_root = Path(temp)
             destination = build_root / "site"

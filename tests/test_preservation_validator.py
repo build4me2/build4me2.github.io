@@ -21,6 +21,35 @@ SPEC.loader.exec_module(validator)
 
 
 class SourcePreservationTests(unittest.TestCase):
+    def test_theme_checkout_preflight_names_uninitialized_and_mismatched_worktrees(self) -> None:
+        expected = "a" * 40
+        gitlink = subprocess.CompletedProcess([], 0, f"160000 {expected} 0\tthemes/PaperMod\n", "")
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            theme = root / "themes/PaperMod"
+            theme.mkdir(parents=True)
+            errors: list[str] = []
+            with mock.patch.object(validator, "ROOT", root), mock.patch.object(
+                validator.subprocess, "run", return_value=gitlink
+            ):
+                self.assertFalse(validator.validate_theme_checkout(expected, errors))
+            self.assertEqual(errors, [
+                "PaperMod worktree is not initialized; run "
+                "'git submodule update --init --recursive' before validation"
+            ])
+
+            (theme / "README.md").write_text("initialized\n", encoding="utf-8")
+            checkout = subprocess.CompletedProcess([], 0, "b" * 40 + "\n", "")
+            errors = []
+            with mock.patch.object(validator, "ROOT", root), mock.patch.object(
+                validator.subprocess, "run", side_effect=[gitlink, checkout]
+            ):
+                self.assertFalse(validator.validate_theme_checkout(expected, errors))
+            self.assertEqual(errors, [
+                f"PaperMod worktree is at {'b' * 40!r}; expected pinned commit {expected}; "
+                "run 'git submodule update --init --recursive'"
+            ])
+
     def test_committed_sources_match_paragraph_inventory(self) -> None:
         baseline = json.loads((ROOT / "tests/baselines/preservation.json").read_text(encoding="utf-8"))
         self.assertEqual(validator.validate_baseline_schema(baseline), [])
@@ -204,13 +233,15 @@ class RenderedPreservationTests(unittest.TestCase):
             errors: list[str] = []
             validator.validate_rendered(baseline, destination, errors)
             self.assertIn(
-                "article route /established-route/ rendered an empty index.html", errors
+                "article route /established-route/ rendered an empty HTTP response (index.html)", errors
             )
 
             (destination / "index.html").write_text("\n", encoding="utf-8")
             errors = []
             validator.validate_rendered(baseline, destination, errors)
-            self.assertEqual(errors, ["home route / rendered an empty index.html"])
+            self.assertEqual(errors, [
+                "home route / rendered an empty HTTP response (index.html)"
+            ])
 
     def test_missing_article_output_names_the_route(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
