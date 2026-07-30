@@ -58,6 +58,11 @@ except ModuleNotFoundError:  # Direct execution from the scripts/ directory.
         validate_override_document,
     )
 
+try:
+    from scripts.citation_audit import build_audit_report, render_json, render_text
+except ModuleNotFoundError:  # Direct execution from the scripts/ directory.
+    from citation_audit import build_audit_report, render_json, render_text  # type: ignore[no-redef]
+
 BLOG_ROOT = Path(__file__).resolve().parents[1]
 POSTS_DIR = BLOG_ROOT / "content" / "posts"
 SUPPORTED_INPUT_SUFFIXES = frozenset({".pdf", ".txt"})
@@ -68,6 +73,8 @@ PDF_TOOL_TIMEOUT_SECONDS = 30
 MAX_TOOL_DIAGNOSTIC_CHARS = 1000
 MIN_PDF_TEXT_CHARACTERS_PER_PAGE = 20
 SLUG_PATTERN = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
+DEFAULT_OVERRIDE_FILE = BLOG_ROOT / "citation-overrides.json"
+_LAST_AUDIT_REPORT: dict[str, object] | None = None
 
 
 class IngestionError(Exception):
@@ -76,6 +83,7 @@ class IngestionError(Exception):
     def __init__(self, category: str, message: str) -> None:
         super().__init__(message)
         self.category = category
+        self.audit_report: dict[str, object] | None = None
 
 
 class IngestionArgumentParser(argparse.ArgumentParser):
@@ -1416,11 +1424,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--link", action="append", default=[], help="Embed citation link: TEXT=URL. Can repeat.")
     parser.add_argument("--keep-references", action="store_true", help="Keep a final References section if present")
     parser.add_argument("--output", type=Path, help="Output .md path; must be below content/posts")
+    parser.add_argument(
+        "--citation-overrides", type=Path, default=DEFAULT_OVERRIDE_FILE,
+        help="strict reviewed override document (defaults to the committed repository file)",
+    )
     return parser
 
 
 def run(argv: Sequence[str] | None = None) -> Path:
-    """Validate, convert, and exclusively create one post; return its path."""
+    """Audit, validate, and exclusively create one post; return its path."""
+    global _LAST_AUDIT_REPORT
+    _LAST_AUDIT_REPORT = None
     args = build_parser().parse_args(argv)
     input_snapshot = validate_input(args.input)
     output: OutputTarget | None = None
@@ -1447,6 +1461,42 @@ def run(argv: Sequence[str] | None = None) -> Path:
             if not body:
                 raise IngestionError("empty_extraction", "extraction produced no publishable body text")
             check_all_sources_embedded(body, pdf_links)
+
+            # Audit the immutable extracted source, before constructing or
+            # installing a publishable post. Overrides may resolve only the
+            # narrowly scoped records accepted by citation_overrides.py.
+            source_name = input_snapshot.path.name
+            identity = document_identity(
+                input_snapshot.data if isinstance(input_snapshot.data, bytes) else raw_text
+            )
+            candidates = extract_citation_candidates(raw_text, pdf_links, source=source_name)
+            matched = match_citation_candidates(raw_text, candidates, source=source_name)
+            try:
+                overrides = load_citation_overrides(args.citation_overrides)
+                applied = apply_citation_overrides({identity: matched}, overrides)
+            except OverrideValidationError as exc:
+                report = build_audit_report(
+                    source=source_name, source_identity=identity, result=matched,
+                    raw_text=raw_text,
+                    errors=[{"category": "citation_overrides", "message": str(exc)}],
+                )
+                failure = IngestionError("citation_overrides", str(exc))
+                failure.audit_report = report
+                _LAST_AUDIT_REPORT = report
+                raise failure from None
+            reviewed = applied.results[identity]
+            report = build_audit_report(
+                source=source_name, source_identity=identity, result=reviewed,
+                override_uses=applied.uses, raw_text=raw_text,
+            )
+            _LAST_AUDIT_REPORT = report
+            if report["summary"]["outcome"] != "success":  # type: ignore[index]
+                failure = IngestionError(
+                    "citation_audit",
+                    f"citation audit has {report['summary']['blockingCount']} blocking finding(s)",  # type: ignore[index]
+                )
+                failure.audit_report = report
+                raise failure
             post = front_matter(title, date, slug) + body + "\n"
         except BaseException as exc:
             extraction_error = exc
@@ -1454,6 +1504,19 @@ def run(argv: Sequence[str] | None = None) -> Path:
         snapshot_cleanup_error = input_snapshot.close()
         if extraction_error is not None:
             # Cleanup must never replace the stable primary ingestion failure.
+            # If extraction failed before matching, still attach a canonical
+            # audit report using the immutable input snapshot identity.
+            if isinstance(extraction_error, IngestionError) and extraction_error.audit_report is None:
+                identity_data = input_snapshot.data
+                identity = document_identity(
+                    identity_data if isinstance(identity_data, bytes) else str(identity_data)
+                )
+                report = build_audit_report(
+                    source=str(input_snapshot.path.name), source_identity=identity,
+                    errors=[{"category": extraction_error.category, "message": str(extraction_error)}],
+                )
+                extraction_error.audit_report = report
+                _LAST_AUDIT_REPORT = report
             raise extraction_error
         if snapshot_cleanup_error is not None:
             # Snapshot lifecycle completes before atomic publication, so this
@@ -1470,13 +1533,29 @@ def run(argv: Sequence[str] | None = None) -> Path:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    global _LAST_AUDIT_REPORT
     try:
         output = run(argv)
     except IngestionError as exc:
-        print(f"ERROR[{exc.category}]: {exc}", file=sys.stderr)
+        report = exc.audit_report or _LAST_AUDIT_REPORT
+        if report is None:
+            # Even failures before extraction emit the same report schema. No
+            # path resolution or file read is attempted merely for reporting.
+            arguments = list(argv) if argv is not None else sys.argv[1:]
+            source = Path(arguments[0]).name if arguments and not arguments[0].startswith("-") else "unavailable"
+            report = build_audit_report(
+                source=source, source_identity="unavailable", errors=[{
+                    "category": exc.category, "message": str(exc),
+                }],
+            )
+        print(render_text(report), end="", file=sys.stderr)
+        print(render_json(report), end="")
         return 2
-    print(f"Wrote {output}")
-    print("Review, then run: make validate && make reproducible && make build && make verify-routes")
+    assert _LAST_AUDIT_REPORT is not None
+    print(render_text(_LAST_AUDIT_REPORT), end="", file=sys.stderr)
+    print(render_json(_LAST_AUDIT_REPORT), end="")
+    print(f"Wrote {output}", file=sys.stderr)
+    print("Review, then run: make validate && make reproducible && make build && make verify-routes", file=sys.stderr)
     return 0
 
 

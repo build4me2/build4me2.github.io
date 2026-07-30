@@ -48,6 +48,27 @@ with citations inherits any blocking citation state. `CitationMatchResult.blocki
 is therefore true whenever any disposition is not `matched` (uncited sentences
 are explicitly `matched` with a no-citation explanation).
 
+### Fail-closed audit reports
+
+Ingestion runs deterministic matching before the atomic post installation. Any
+unresolved, unlinked, ambiguous, duplicate, malformed, orphaned, suspicious, or
+conflicting disposition exits with `ERROR[citation_audit]` and the destination is
+never created. URLs containing credentials or targeting localhost are treated as
+suspicious; explicit HTTP(S) tokens rejected by normalization are reported as
+malformed rather than silently disappearing.
+
+Every CLI invocation emits two views of its audit, including failures before
+citation extraction: canonical JSON on standard output and a human-readable
+report on standard error. The JSON uses `citation-audit-report/v1` and includes a
+content hash (or the explicit `unavailable` sentinel when no input could safely
+be opened), source name, source-order records and evidence, provenance,
+dispositions, exact override consumption, errors, and summary/status counts.
+The text view carries the same evidence and decisions. Reports contain no clock,
+random, host, temporary-directory, or absolute-path values and are stable across
+identical invocations. `scripts.citation_audit.build_audit_report()`,
+`render_json()`, and `render_text()` expose the same report functionality to
+repository validators without network access.
+
 ### Reviewed citation overrides
 
 The committed `citation-overrides.json` file is the only review-override format.
