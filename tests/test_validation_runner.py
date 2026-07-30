@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import importlib.util
 import re
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -38,6 +40,33 @@ def failing_suite() -> unittest.TestSuite:
     return unittest.TestSuite([Failing("test_failure")])
 
 
+def run_validation_command(root: Path, *, fail: bool) -> subprocess.CompletedProcess[str]:
+    """Run the real validation CLI against an isolated deterministic fixture."""
+    scripts = root / "scripts"
+    tests = root / "tests"
+    scripts.mkdir()
+    tests.mkdir()
+    (scripts / "run_validation.py").write_bytes(
+        (ROOT / "scripts" / "run_validation.py").read_bytes()
+    )
+    assertion = 'self.fail("stable command diagnostic")' if fail else "self.assertTrue(True)"
+    (tests / "test_command_fixture.py").write_text(
+        "import unittest\n\n"
+        "class CommandFixture(unittest.TestCase):\n"
+        "    def test_report(self):\n"
+        f"        {assertion}\n",
+        encoding="utf-8",
+    )
+    return subprocess.run(
+        [sys.executable, "scripts/run_validation.py"],
+        cwd=root,
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+
+
 def temporary_path_suite(root: Path, *, fail: bool) -> unittest.TestSuite:
     """Create a report that exposes a real randomized root and useful suffix."""
     fixture = root / "fixtures" / "article.txt"
@@ -54,6 +83,39 @@ def temporary_path_suite(root: Path, *, fail: bool) -> unittest.TestSuite:
 
 
 class DeterministicValidationRunnerTests(unittest.TestCase):
+    def test_command_success_reports_are_equivalent_across_repeated_runs(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="validation-command-") as first_root, tempfile.TemporaryDirectory(
+            prefix="validation-command-"
+        ) as second_root:
+            first = run_validation_command(Path(first_root), fail=False)
+            second = run_validation_command(Path(second_root), fail=False)
+
+        self.assertEqual(first.returncode, 0)
+        self.assertEqual(second.returncode, 0)
+        self.assertEqual(first.stdout, second.stdout)
+        self.assertEqual(first.stderr, second.stderr)
+        self.assertIn("test_report", first.stdout)
+        self.assertIn("OK", first.stdout)
+        self.assertNotIn(first_root, first.stdout)
+        self.assertNotIn(second_root, second.stdout)
+
+    def test_command_failure_reports_are_equivalent_across_repeated_runs(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="validation-command-") as first_root, tempfile.TemporaryDirectory(
+            prefix="validation-command-"
+        ) as second_root:
+            first = run_validation_command(Path(first_root), fail=True)
+            second = run_validation_command(Path(second_root), fail=True)
+
+        self.assertEqual(first.returncode, 1)
+        self.assertEqual(second.returncode, 1)
+        self.assertEqual(first.stdout, second.stdout)
+        self.assertEqual(first.stderr, second.stderr)
+        self.assertIn("stable command diagnostic", first.stdout)
+        self.assertIn("FAILED (failures=1)", first.stdout)
+        self.assertIn("<repo>/tests/test_command_fixture.py", first.stdout)
+        self.assertNotIn(first_root, first.stdout)
+        self.assertNotIn(second_root, second.stdout)
+
     def test_success_reports_are_equivalent_across_repeated_runs(self) -> None:
         first_result, first = runner.render_report(passing_suite())
         second_result, second = runner.render_report(passing_suite())

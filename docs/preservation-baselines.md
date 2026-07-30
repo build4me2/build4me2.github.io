@@ -4,10 +4,16 @@ Initialize the repository's pinned build inputs, then run the exact scoped
 validation entrypoint from the repository root:
 
 ```sh
-python3 scripts/setup_pinned_theme.py
+make setup
 hugo version # must report v0.162.0 with Extended capabilities
-python3 -m unittest discover -s tests -p 'test_*.py'
+make validate
 ```
+
+`make validate` is the only acceptance-suite entrypoint. It delegates to
+`scripts/run_validation.py`, which provides stable global test ordering and
+normalizes runtime-only report values. Do not invoke the test framework's raw
+discovery mode directly: that bypasses deterministic report generation. Repeated
+successful and failing CLI runs are covered by command-level comparison tests.
 
 `setup_pinned_theme.py` verifies and expands the committed PaperMod snapshot,
 reconstructs its exact `154d006e0182dfc7da38008323976b02e6bfab4a` Git checkout,
@@ -39,7 +45,13 @@ The rendering toolchain is pinned to **Hugo Extended 0.162.0**. PaperMod's pinne
 
 PaperMod remains a Git submodule pinned by the repository gitlink to commit **`154d006e0182dfc7da38008323976b02e6bfab4a`**. A clean checkout may use `git clone --recurse-submodules` (or `git submodule update --init --recursive`); `python3 scripts/setup_pinned_theme.py` provides the documented network-free equivalent from the digest-pinned committed snapshot. Both paths are accepted only when the resulting theme HEAD and complete worktree match that exact commit.
 
-The full `python3 scripts/validate_preservation_baseline.py` invocation is the required acceptance command; a `--source-only` run is diagnostic only and does not satisfy acceptance. Both modes first inspect the local `hugo env` output without accessing the network and report the expected and observed toolchains on a version or Extended-capability mismatch. Initialize the pinned theme first. The validator checks both the committed PaperMod gitlink and the checked-out worktree commit before invoking Hugo; an absent or stale checkout reports the exact offline `python3 scripts/setup_pinned_theme.py` recovery command instead of an indirect template error. The full check builds with an isolated cache in a temporary directory and leaves no `public/` tree. The mutation tests are also offline: they use temporary fixtures to prove that toolchain mismatches, empty HTTP route responses, missing routes, titles, listing entries, header/footer/theme-toggle markers, prose segments, configuration, templates, and styles produce focused failures.
+`make validate` is the required acceptance command; it includes the full
+`python3 scripts/validate_preservation_baseline.py` integration invocation. A
+direct validator run is an integration diagnostic, and a `--source-only` run is
+a narrower diagnostic; neither replaces the complete acceptance suite. Both
+validator modes first inspect the local `hugo env` output without accessing the
+network and report the expected and observed toolchains on a version or
+Extended-capability mismatch. Initialize the pinned theme first. The validator checks both the committed PaperMod gitlink and the checked-out worktree commit before invoking Hugo; an absent or stale checkout reports the exact offline `python3 scripts/setup_pinned_theme.py` recovery command instead of an indirect template error. The full check builds with an isolated cache in a temporary directory and leaves no `public/` tree. The mutation tests are also offline: they use temporary fixtures to prove that toolchain mismatches, empty HTTP route responses, missing routes, titles, listing entries, header/footer/theme-toggle markers, prose segments, configuration, templates, and styles produce focused failures.
 
 ## What is protected
 
