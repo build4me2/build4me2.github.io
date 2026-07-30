@@ -18,9 +18,11 @@ and slugs use only lowercase ASCII letters, digits, and single hyphens. Explicit
 `content/posts/` tree; output directories are never created and existing posts
 are never overwritten. Validation failures use stable `ERROR[category]: ...`
 diagnostics, return nonzero, and do not create an output file. After all
-extraction and citation checks pass, the complete post is written to a hidden
-temporary file in the destination directory, flushed and verified byte-for-byte,
-then atomically installed without replacement. Input bytes come from the regular
+extraction and citation checks pass, the complete post is written to an anonymous
+`O_TMPFILE` inode in the destination directory, flushed and verified byte-for-byte,
+then given the destination name atomically without replacement. The staging inode
+never has a pathname, so pre-install failures require no directory cleanup and
+cannot leave temporary debris. Input bytes come from the regular
 file descriptor opened during validation. For PDFs, the captured bytes are copied
 to a temporary descriptor whose pathname is immediately unlinked; every Poppler
 process inherits that same descriptor and opens it through `/proc/self/fd`, so no
@@ -29,14 +31,13 @@ extraction pass. The snapshot is closed before publication. A lifecycle failure
 uses `ERROR[snapshot_cleanup]` and blocks publication, while cleanup can never
 replace an earlier extraction diagnostic. Output
 parents are opened component-by-component without following links and retained
-through installation; staging, verification, linking, and cleanup are all
-performed relative to that bound directory descriptor. Every failure attempts
-to remove the staging file; a destination created concurrently or already
-present remains unchanged, and replacing an output parent pathname cannot
-redirect the post. A staging-unlink failure is never suppressed: it returns the
-stable `ERROR[output_cleanup]` category. If unlink fails after atomic installation, the
-new destination link is rolled back before the failure is reported; if rollback
-itself fails, that is included explicitly in the diagnostic for operator repair.
+through installation; anonymous staging, verification, and installation are all
+performed relative to that bound directory descriptor. A destination created
+concurrently or already present remains unchanged, and replacing an output parent
+pathname cannot redirect the post. Installation is the final fallible transaction
+operation: there is no staging name to unlink and no post-install cleanup or
+rollback whose failure could leave debris or turn an installed post into a
+reported failure.
 
 ## Extraction failure policy
 

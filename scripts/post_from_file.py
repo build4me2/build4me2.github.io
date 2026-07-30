@@ -18,9 +18,10 @@ Examples:
 from __future__ import annotations
 
 import argparse
+import ctypes
+import errno
 import os
 import re
-import secrets
 import shutil
 import stat
 import subprocess
@@ -294,8 +295,15 @@ class OutputTarget:
 
     def close(self) -> None:
         if self.parent_descriptor >= 0:
-            os.close(self.parent_descriptor)
+            # A directory-descriptor close cannot change the transaction. Mark
+            # it closed first and never turn a completed installation into a
+            # reported failure because close(2) returned an ambiguous error.
+            descriptor = self.parent_descriptor
             self.parent_descriptor = -1
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
 
     def __del__(self) -> None:
         self.close()
@@ -740,8 +748,33 @@ def _validate_staged_post(descriptor: int, expected: bytes) -> None:
         ) from None
 
 
+def _install_anonymous_file(descriptor: int, target: OutputTarget) -> None:
+    """Give an O_TMPFILE descriptor its sole name, without replacement.
+
+    Python's os.link does not expose Linux linkat(AT_EMPTY_PATH), so use the
+    libc wrapper. This syscall is the transaction's commit point: before it the
+    inode has no directory entry; after it the complete inode has exactly the
+    destination entry.
+    """
+    at_empty_path = 0x1000
+    libc = ctypes.CDLL(None, use_errno=True)
+    linkat = libc.linkat
+    linkat.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_int]
+    linkat.restype = ctypes.c_int
+    if linkat(descriptor, b"", target.parent_descriptor, os.fsencode(target.name), at_empty_path) == 0:
+        return
+    error = ctypes.get_errno()
+    if error == errno.EEXIST:
+        raise IngestionError(
+            "output_exists", f"refusing to overwrite existing post: {target.path}"
+        )
+    raise IngestionError(
+        "output_write", f"cannot install output atomically: {os.strerror(error)}"
+    )
+
+
 def _atomic_create_post(output: Path | OutputTarget, post: str) -> None:
-    """Install through retained directory descriptors without replacing a name."""
+    """Install a fully validated anonymous inode as the destination's sole name."""
     owns_target = not isinstance(output, OutputTarget)
     if owns_target:
         path = output
@@ -754,37 +787,31 @@ def _atomic_create_post(output: Path | OutputTarget, post: str) -> None:
         target = output
 
     expected = post.encode("utf-8")
-    temporary_name: str | None = None
     descriptor = -1
-    installed = False
-    operation_error: BaseException | None = None
     try:
-        for _ in range(100):
-            temporary_name = f".{target.name}.{secrets.token_hex(12)}.tmp"
-            try:
-                descriptor = os.open(
-                    temporary_name,
-                    os.O_RDWR | os.O_CREAT | os.O_EXCL | getattr(os, "O_CLOEXEC", 0),
-                    0o600,
-                    dir_fd=target.parent_descriptor,
-                )
-                break
-            except FileExistsError:
-                continue
-            except OSError as exc:
-                raise IngestionError(
-                    "output_write", f"cannot create staged output: {exc.strerror or exc}"
-                ) from None
-        else:
-            raise IngestionError("output_write", "cannot allocate a unique staged output")
+        # O_TMPFILE creates an inode with link count zero. Every pre-install
+        # fault therefore disappears merely by closing the fd: there is no
+        # staging pathname to clean up and no rollback operation that can fail.
+        if not hasattr(os, "O_TMPFILE"):
+            raise IngestionError(
+                "output_write", "anonymous output staging is not supported on this platform"
+            )
+        flags = os.O_RDWR | os.O_TMPFILE | getattr(os, "O_CLOEXEC", 0)
+        try:
+            descriptor = os.open(".", flags, 0o600, dir_fd=target.parent_descriptor)
+        except OSError as exc:
+            raise IngestionError(
+                "output_write", f"cannot create anonymous staged output: {exc.strerror or exc}"
+            ) from None
 
         try:
-            with os.fdopen(os.dup(descriptor), "w", encoding="utf-8", newline="\n") as destination:
-                written = destination.write(post)
-                if written != len(post):
+            offset = 0
+            while offset < len(expected):
+                written = os.write(descriptor, expected[offset:])
+                if written <= 0:
                     raise IngestionError("output_write", "could not write the complete staged output")
-                destination.flush()
-                os.fsync(destination.fileno())
+                offset += written
+            os.fsync(descriptor)
         except IngestionError:
             raise
         except OSError as exc:
@@ -793,68 +820,17 @@ def _atomic_create_post(output: Path | OutputTarget, post: str) -> None:
             ) from None
 
         _validate_staged_post(descriptor, expected)
-        try:
-            os.link(
-                temporary_name,
-                target.name,
-                src_dir_fd=target.parent_descriptor,
-                dst_dir_fd=target.parent_descriptor,
-                follow_symlinks=False,
-            )
-        except FileExistsError:
-            raise IngestionError(
-                "output_exists", f"refusing to overwrite existing post: {target.path}"
-            ) from None
-        except OSError as exc:
-            raise IngestionError(
-                "output_write", f"cannot install output atomically: {exc.strerror or exc}"
-            ) from None
-        installed = True
-    except BaseException as exc:
-        operation_error = exc
+
+        # Keep this as the final fallible transaction operation. Descriptor
+        # closes below are deliberately non-reporting because they cannot alter
+        # the installed name or leave a named staging artifact.
+        _install_anonymous_file(descriptor, target)
     finally:
         if descriptor >= 0:
             try:
                 os.close(descriptor)
             except OSError:
-                # Closing an already flushed and validated descriptor does not
-                # alter the installed bytes. Cleanup below must still run.
                 pass
-
-    cleanup_error: OSError | None = None
-    rollback_error: OSError | None = None
-    if temporary_name is not None:
-        try:
-            os.unlink(temporary_name, dir_fd=target.parent_descriptor)
-        except FileNotFoundError:
-            pass
-        except OSError as exc:
-            cleanup_error = exc
-
-    # A successful link is not reported as a successful transaction until its
-    # staging name is gone. If that cleanup fails, remove only the destination
-    # hard link created by this invocation so callers never receive failure with
-    # a newly publishable post in place.
-    if cleanup_error is not None and installed:
-        try:
-            os.unlink(target.name, dir_fd=target.parent_descriptor)
-        except OSError as exc:
-            rollback_error = exc
-
-    try:
-        if cleanup_error is not None:
-            detail = cleanup_error.strerror or str(cleanup_error)
-            message = f"cannot remove staged output: {detail}"
-            if installed:
-                if rollback_error is None:
-                    message += "; installed output was rolled back"
-                else:
-                    rollback_detail = rollback_error.strerror or str(rollback_error)
-                    message += f"; cannot roll back installed output: {rollback_detail}"
-            raise IngestionError("output_cleanup", message) from operation_error
-        if operation_error is not None:
-            raise operation_error
-    finally:
         if owns_target:
             target.close()
 

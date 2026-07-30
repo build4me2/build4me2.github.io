@@ -237,7 +237,7 @@ class AtomicOutputTests(unittest.TestCase):
 
             self.assertEqual("output_write", caught.exception.category)
             self.assertFalse(output.exists())
-            self.assertEqual([], self.staging_files(root))
+            self.assertEqual([], list(root.iterdir()))
 
     def test_commit_race_preserves_existing_destination_byte_for_byte(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -251,7 +251,7 @@ class AtomicOutputTests(unittest.TestCase):
 
             self.assertEqual("output_exists", caught.exception.category)
             self.assertEqual(original, output.read_bytes())
-            self.assertEqual([], self.staging_files(root))
+            self.assertEqual([output], list(root.iterdir()))
 
     @mock.patch.object(converter, "_validate_staged_post")
     def test_staged_validation_failure_cleans_up_without_publishing(self, validate) -> None:
@@ -263,49 +263,56 @@ class AtomicOutputTests(unittest.TestCase):
                 converter._atomic_create_post(output, "complete post\n")
 
             self.assertFalse(output.exists())
-            self.assertEqual([], self.staging_files(root))
+            self.assertEqual([], list(root.iterdir()))
 
     @mock.patch.object(converter, "_validate_staged_post")
-    def test_pre_commit_cleanup_failure_is_explicit_and_does_not_publish(self, validate) -> None:
+    def test_pre_install_fault_needs_no_cleanup_and_leaves_no_named_inode(self, validate) -> None:
         validate.side_effect = converter.IngestionError("output_write", "invalid staged post")
-        real_unlink = converter.os.unlink
-
-        def reject_staging(name, *, dir_fd=None):
-            if str(name).endswith(".tmp"):
-                raise OSError(5, "controlled cleanup failure")
-            return real_unlink(name, dir_fd=dir_fd)
-
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             output = root / "post.md"
-            with mock.patch.object(converter.os, "unlink", side_effect=reject_staging):
+            with mock.patch.object(
+                converter.os, "unlink", side_effect=AssertionError("cleanup must not be attempted")
+            ) as unlink:
                 with self.assertRaises(converter.IngestionError) as caught:
                     converter._atomic_create_post(output, "complete post\n")
 
-            self.assertEqual("output_cleanup", caught.exception.category)
-            self.assertIn("cannot remove staged output: controlled cleanup failure", str(caught.exception))
+            self.assertEqual("output_write", caught.exception.category)
+            unlink.assert_not_called()
             self.assertFalse(output.exists())
-            self.assertEqual(1, len(self.staging_files(root)))
+            self.assertEqual([], list(root.iterdir()))
 
-    def test_post_commit_cleanup_failure_rolls_back_and_is_explicit(self) -> None:
-        real_unlink = converter.os.unlink
-
-        def reject_staging(name, *, dir_fd=None):
-            if str(name).endswith(".tmp"):
-                raise OSError(5, "controlled cleanup failure")
-            return real_unlink(name, dir_fd=dir_fd)
-
+    def test_installation_fault_needs_no_rollback_and_leaves_no_named_inode(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             output = root / "post.md"
-            with mock.patch.object(converter.os, "unlink", side_effect=reject_staging):
+            install_fault = converter.IngestionError("output_write", "controlled install failure")
+            with (
+                mock.patch.object(converter, "_install_anonymous_file", side_effect=install_fault),
+                mock.patch.object(
+                    converter.os, "unlink", side_effect=AssertionError("rollback must not be attempted")
+                ) as unlink,
+            ):
                 with self.assertRaises(converter.IngestionError) as caught:
                     converter._atomic_create_post(output, "complete post\n")
 
-            self.assertEqual("output_cleanup", caught.exception.category)
-            self.assertIn("installed output was rolled back", str(caught.exception))
+            self.assertIs(install_fault, caught.exception)
+            unlink.assert_not_called()
             self.assertFalse(output.exists())
-            self.assertEqual(1, len(self.staging_files(root)))
+            self.assertEqual([], list(root.iterdir()))
+
+    def test_cleanup_and_rollback_fault_hooks_cannot_affect_success(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            output = root / "post.md"
+            with mock.patch.object(
+                converter.os, "unlink", side_effect=OSError(5, "controlled cleanup failure")
+            ) as unlink:
+                converter._atomic_create_post(output, "complete post\n")
+
+            unlink.assert_not_called()
+            self.assertEqual("complete post\n", output.read_text(encoding="utf-8"))
+            self.assertEqual([output], list(root.iterdir()))
 
 
 class MetadataAndOutputValidationTests(unittest.TestCase):
