@@ -2,9 +2,12 @@
 """Offline mutation tests for the deterministic preservation validator."""
 from __future__ import annotations
 
+import contextlib
 import importlib.util
+import io
 import json
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -88,7 +91,10 @@ class SourcePreservationTests(unittest.TestCase):
         baseline = json.loads((ROOT / "tests/baselines/preservation.json").read_text(encoding="utf-8"))
         self.assertEqual(validator.validate_baseline_schema(baseline), [])
         errors: list[str] = []
-        validator.validate_sources(baseline, errors)
+        # Source inventory is a unit concern; the real submodule checkout is an
+        # integration preflight covered independently below and by the CLI.
+        with mock.patch.object(validator, "validate_theme_checkout", return_value=True):
+            validator.validate_sources(baseline, errors)
         self.assertEqual(errors, [])
         for article in baseline["articles"]:
             _, body = validator.split_post(ROOT / article["source"])
@@ -507,16 +513,32 @@ class CliTests(unittest.TestCase):
             ["$: expected object, got array"],
         )
 
-    def test_full_acceptance_cli_is_network_free_and_successful(self) -> None:
-        result = subprocess.run(
-            ["python3", "scripts/validate_preservation_baseline.py"],
-            cwd=ROOT,
-            text=True,
-            capture_output=True,
-            timeout=30,
-        )
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("Preservation baseline passed", result.stdout)
+    def test_full_cli_orchestration_is_offline_with_fixture_build_dependencies(self) -> None:
+        # Unit discovery must work in a fresh worktree, where the PaperMod
+        # gitlink exists but its worktree has not been initialized. The real
+        # checkout/toolchain gate remains part of the separately run CLI.
+        real_run = subprocess.run
+
+        def fixture_run(command, **kwargs):
+            if command[0] == "hugo":
+                return subprocess.CompletedProcess(command, 0, "", "")
+            return real_run(command, **kwargs)
+
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with mock.patch.object(sys, "argv", ["validate_preservation_baseline.py"]), \
+                mock.patch.object(validator, "validate_hugo_toolchain", return_value=True) as toolchain, \
+                mock.patch.object(validator, "validate_theme_checkout", return_value=True) as theme, \
+                mock.patch.object(validator, "validate_rendered") as rendered, \
+                mock.patch.object(validator.subprocess, "run", side_effect=fixture_run), \
+                contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            status = validator.main()
+
+        self.assertEqual(status, 0, stderr.getvalue())
+        self.assertIn("Preservation baseline passed", stdout.getvalue())
+        toolchain.assert_called_once_with("0.162.0", True, mock.ANY)
+        theme.assert_called_once_with("154d006e0182dfc7da38008323976b02e6bfab4a", mock.ANY)
+        rendered.assert_called_once()
 
 
 if __name__ == "__main__":

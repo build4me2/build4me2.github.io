@@ -1,13 +1,25 @@
 # Content and presentation preservation baseline
 
-Run the offline preservation check from the repository root:
+Run the hermetic unit suite from the repository root, including in a fresh
+worktree whose submodule has not been initialized:
+
+```sh
+python3 -m unittest discover -s tests -p 'test_*.py'
+```
+
+Run the repository-checkout integration preflight and rendered acceptance check
+separately:
 
 ```sh
 git submodule update --init --recursive
 hugo version # must report v0.162.0 with Extended capabilities
 python3 scripts/validate_preservation_baseline.py
-python3 -m unittest discover -s tests -p 'test_*.py' -v
 ```
+
+Unit tests fixture the Hugo build and PaperMod checkout state where those are not
+the behavior under test. They neither initialize submodules nor access the
+network. The full validator intentionally does not mock those dependencies: it
+verifies the checked-out PaperMod commit and local Hugo binary before rendering.
 
 The rendering toolchain is pinned to **Hugo Extended 0.162.0**. Install that exact Extended release from the [Hugo releases](https://github.com/gohugoio/hugo/releases/tag/v0.162.0) before validating; do not substitute a newer patch or a standard build. GitHub Pages uses the same exact version through `HUGO_VERSION` in `.github/workflows/hugo.yml`.
 
