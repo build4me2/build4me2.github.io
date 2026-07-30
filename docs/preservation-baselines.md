@@ -53,10 +53,10 @@ Before changing a citation destination, add a `citation-reconciliation` entry to
 1. a unique non-empty `id`;
 2. `article`, the repository-relative post path;
 3. `citationIndex`, the destination's one-based position (repeats therefore remain unambiguous);
-4. exact non-empty `before` and `after` destinations;
-5. a non-empty `reason` and `verificationEvidence` array;
+4. exact, non-empty, differing `before` and `after` destinations;
+5. a non-whitespace `reason` and `verificationEvidence` array;
 6. `proseArgumentRoutePresentationUnchanged: true`.
 
 For an approved front-matter correction, use a `front-matter-reconciliation` entry with the same `id`, `article`, `reason`, `verificationEvidence`, and unchanged-invariant flag, plus `field` and exact scalar `before` and `after` values. The only reconcilable fields are `date`, `draft`, `hideSummary`, and `ShowToc`; established titles and slugs/routes remain identities and cannot be reconciled. A date correction must also be reflected in the home-listing baseline derived from it. Presentation and Hugo configuration changes are prohibited and have no reconciliation record type.
 
-Then update only the affected source and fixture values in `preservation.json`, run the full validator, and include the post, review record, and baseline in review. Each changed value must consume an exact matching record; stale, duplicate, or non-matching records fail validation. Prose is compared directly with the inherited `capturedFrom` source after only hyperlink destinations are masked, so rebaselining hashes cannot authorize changed wording or arguments. Never update baseline hashes to make an unexplained content or design change pass. The initial record identifies the inherited commit used for this inventory and approves no changes.
+Then update only the affected source and fixture values in `preservation.json`, run the full validator, and include the post, review record, and baseline in review. Each changed value must consume an exact matching record; stale, duplicate, non-matching, or unknown-article records fail validation. Prose is compared directly with the inherited `capturedFrom` source after only hyperlink destinations are masked, so rebaselining hashes cannot authorize changed wording or arguments. Never update baseline hashes to make an unexplained content or design change pass. The initial record identifies the inherited commit used for this inventory and approves no changes.

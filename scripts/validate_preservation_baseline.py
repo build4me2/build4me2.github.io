@@ -415,7 +415,7 @@ def validate_review_records_schema(document: Any) -> list[str]:
             fail(errors, f"{path}: expected object, got {json_type(record)}")
             continue
         record_id = record.get("id")
-        if not isinstance(record_id, str) or not record_id:
+        if not isinstance(record_id, str) or not record_id.strip():
             fail(errors, f"{path}.id: expected non-empty string")
         elif record_id in ids:
             fail(errors, f"{path}.id: duplicate record id {record_id!r}")
@@ -428,12 +428,14 @@ def validate_review_records_schema(document: Any) -> list[str]:
             fail(errors, f"{path}.kind: unsupported review kind {kind!r}")
             continue
         for name in ("article", "reason"):
-            if not isinstance(record.get(name), str) or not record[name]:
+            if not isinstance(record.get(name), str) or not record[name].strip():
                 fail(errors, f"{path}.{name}: expected non-empty string")
         if kind == "citation-reconciliation":
             for name in ("before", "after"):
-                if not isinstance(record.get(name), str) or not record[name]:
+                if not isinstance(record.get(name), str) or not record[name].strip():
                     fail(errors, f"{path}.{name}: expected non-empty string")
+            if record.get("before") == record.get("after"):
+                fail(errors, f"{path}: before and after must differ")
             citation_index = record.get("citationIndex")
             if not isinstance(citation_index, int) or isinstance(citation_index, bool) or citation_index < 1:
                 fail(errors, f"{path}.citationIndex: expected positive integer")
@@ -451,7 +453,7 @@ def validate_review_records_schema(document: Any) -> list[str]:
                 fail(errors, f"{path}: before and after must differ")
         evidence = record.get("verificationEvidence")
         if not isinstance(evidence, list) or not evidence or not all(
-            isinstance(item, str) and item for item in evidence
+            isinstance(item, str) and item.strip() for item in evidence
         ):
             fail(errors, f"{path}.verificationEvidence: expected non-empty array of non-empty strings")
         if record.get("proseArgumentRoutePresentationUnchanged") is not True:
@@ -461,7 +463,7 @@ def validate_review_records_schema(document: Any) -> list[str]:
 
 def validate_article_history(
     article: dict[str, Any], original_body: str, records: list[dict[str, Any]], errors: list[str]
-) -> None:
+) -> set[str]:
     """Anchor prose and citation history to the inherited source commit."""
     relative = article["source"]
     _, current_body = split_post(ROOT / relative)
@@ -492,6 +494,7 @@ def validate_article_history(
     for record in applicable:
         if record.get("id") not in consumed:
             fail(errors, f"stale or non-matching citation review record {record.get('id')!r}: {relative}")
+    return consumed
 
 
 def captured_file(commit: str, relative: str, errors: list[str]) -> bytes | None:
@@ -517,6 +520,7 @@ def validate_preservation_history(
     records = review_document["records"]
     expected_listing: list[tuple[str, dict[str, str]]] = []
     consumed_front_matter_records: set[str] = set()
+    consumed_citation_records: set[str] = set()
 
     for article in baseline["articles"]:
         relative = article["source"]
@@ -552,15 +556,24 @@ def validate_preservation_history(
                 "title": expected_front_matter["title"],
                 "date": display_date(expected_front_matter["date"]),
             }))
-            validate_article_history(article, original_body, records, errors)
+            consumed_citation_records.update(
+                validate_article_history(article, original_body, records, errors)
+            )
         except (OSError, UnicodeDecodeError, ValueError, tomllib.TOMLDecodeError) as exc:
             fail(errors, f"cannot compare captured source {relative} ({type(exc).__name__})")
 
     for record in records:
-        if record.get("kind") == "front-matter-reconciliation" and record.get("id") not in consumed_front_matter_records:
+        kind = record.get("kind")
+        record_id = record.get("id")
+        if kind == "front-matter-reconciliation" and record_id not in consumed_front_matter_records:
             # Records for unknown articles and duplicate/out-of-order edits cannot silently authorize anything.
             article = record.get("article", "<unknown>")
-            message = f"stale or non-matching front-matter review record {record.get('id')!r}: {article}"
+            message = f"stale or non-matching front-matter review record {record_id!r}: {article}"
+            if message not in errors:
+                fail(errors, message)
+        if kind == "citation-reconciliation" and record_id not in consumed_citation_records:
+            article = record.get("article", "<unknown>")
+            message = f"stale or non-matching citation review record {record_id!r}: {article}"
             if message not in errors:
                 fail(errors, message)
 

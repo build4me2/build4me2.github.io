@@ -109,6 +109,28 @@ class SourcePreservationTests(unittest.TestCase):
             self.assertEqual(inventory, sorted(set(inventory)))
             self.assertEqual(actual, inventory)
 
+    def test_review_records_require_a_real_change_and_meaningful_evidence(self) -> None:
+        record = {
+            "id": "   ",
+            "kind": "citation-reconciliation",
+            "article": "content/posts/example.md",
+            "citationIndex": 1,
+            "before": "https://example.invalid/source",
+            "after": "https://example.invalid/source",
+            "reason": "   ",
+            "verificationEvidence": ["\t"],
+            "proseArgumentRoutePresentationUnchanged": True,
+        }
+        errors = validator.validate_review_records_schema({
+            "schema": "preservation-review-records/v1", "records": [record]
+        })
+        self.assertEqual(errors, [
+            "$.records[0].id: expected non-empty string",
+            "$.records[0].reason: expected non-empty string",
+            "$.records[0].verificationEvidence: expected non-empty array of non-empty strings",
+            "$.records[0]: before and after must differ",
+        ])
+
     def test_captured_history_rejects_rebaselined_prose_and_unreviewed_links(self) -> None:
         baseline = json.loads((ROOT / "tests/baselines/preservation.json").read_text(encoding="utf-8"))
         baseline["capturedFrom"] = "a" * 40
@@ -248,9 +270,27 @@ class SourcePreservationTests(unittest.TestCase):
             ), mock.patch.object(validator.subprocess, "run", side_effect=fake_run):
                 validator.validate_preservation_history(
                     baseline,
-                    {"records": [{"id": "initial", "kind": "baseline-capture"}]},
+                    {"records": [
+                        {"id": "initial", "kind": "baseline-capture"},
+                        {
+                            "id": "orphaned-citation-review",
+                            "kind": "citation-reconciliation",
+                            "article": "content/posts/not-established.md",
+                            "citationIndex": 1,
+                            "before": "https://old.example/source",
+                            "after": "https://verified.example/source",
+                            "reason": "A claimed correction must target an established article.",
+                            "verificationEvidence": ["Publisher record checked."],
+                            "proseArgumentRoutePresentationUnchanged": True,
+                        },
+                    ]},
                     errors,
                 )
+            self.assertIn(
+                "stale or non-matching citation review record "
+                "'orphaned-citation-review': content/posts/not-established.md",
+                errors,
+            )
             self.assertIn(
                 "front matter differs from captured history without exact review: content/posts/example.md",
                 errors,
