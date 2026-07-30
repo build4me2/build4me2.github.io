@@ -711,8 +711,320 @@ def extract_citation_candidates(
                         "visible body text" if section == "body" else "visible reference-section text",
                     ))
 
-    # Preserve distinct evidence/methods while suppressing only exact repeats.
-    return list(dict.fromkeys(found))
+    # Do not deduplicate here. Repeated evidence is significant to deterministic
+    # matching and must receive an explicit duplicate/ambiguous disposition.
+    return found
+
+
+class SentenceRecord(NamedTuple):
+    """A body sentence with a stable source-order identity."""
+
+    record_id: str
+    text: str
+    source_location: SourceLocation
+
+
+class InTextCitationRecord(NamedTuple):
+    """One marker, author-year form, or inline destination in a sentence."""
+
+    record_id: str
+    sentence_id: str
+    raw_evidence: str
+    identity: str
+    form: str
+    source_location: SourceLocation
+
+
+class ReferenceEntryRecord(NamedTuple):
+    """One reference-list entry and its deterministic citation identity."""
+
+    record_id: str
+    text: str
+    identity: str | None
+    source_locations: tuple[SourceLocation, ...]
+
+
+class CitationDisposition(NamedTuple):
+    """Final non-guessing disposition for one parsed or recovered record."""
+
+    subject_type: str
+    subject_id: str
+    status: str
+    matched_id: str | None
+    reason: str
+
+
+class CitationMatchResult(NamedTuple):
+    sentences: tuple[SentenceRecord, ...]
+    citations: tuple[InTextCitationRecord, ...]
+    references: tuple[ReferenceEntryRecord, ...]
+    candidates: tuple[CitationCandidate, ...]
+    dispositions: tuple[CitationDisposition, ...]
+
+    @property
+    def blocking(self) -> bool:
+        return any(item.status != "matched" for item in self.dispositions)
+
+
+def _author_year_identity(value: str) -> str | None:
+    """Return the deliberately narrow ``surname:year`` identity.
+
+    A suffix (2020a) is part of the year. Only the first author surname is used;
+    consequently two entries sharing it are reported ambiguous rather than
+    disambiguated from titles or guessed author lists.
+    """
+    year = re.search(r"\b((?:18|19|20)\d{2}[a-z]?)\b", value, re.I)
+    if year is None:
+        return None
+    prefix = value[:year.start()]
+    prefix = re.sub(r"^[\s\[(]*(?:see|e\.g\.|cf\.)\s+", "", prefix, flags=re.I)
+    surname = re.search(r"[A-Z][A-Za-z'’-]+", prefix)
+    if surname is None:
+        return None
+    return f"author-year:{surname.group(0).casefold()}:{year.group(1).casefold()}"
+
+
+def _reference_entries(raw_text: str, source: str) -> list[ReferenceEntryRecord]:
+    records = _line_records(raw_text)
+    entries: list[tuple[list[str], list[SourceLocation], str | None]] = []
+    current_lines: list[str] = []
+    current_locations: list[SourceLocation] = []
+    current_identity: str | None = None
+
+    def finish() -> None:
+        nonlocal current_lines, current_locations, current_identity
+        if current_lines:
+            entries.append((current_lines, current_locations, current_identity))
+        current_lines, current_locations, current_identity = [], [], None
+
+    for page, line, section, value in records:
+        if section != "references" or re.match(
+            r"^\s*(references|bibliography|works cited)\s*$", value, re.I
+        ):
+            continue
+        if not value.strip():
+            continue
+        numeric = re.match(r"^\s*(?:\[(\d{1,3})\]|(\d{1,3})[.)])\s+", value)
+        author_identity = _author_year_identity(value)
+        # An entry starts only at a numeric label or a plausible author/year
+        # line. Indented/nonmatching lines continue the prior entry.
+        starts_entry = numeric is not None or (
+            author_identity is not None and re.match(r"^\s*[A-Z][A-Za-z'’-]+", value) is not None
+        )
+        if starts_entry:
+            finish()
+            if numeric is not None:
+                current_identity = f"numeric:{numeric.group(1) or numeric.group(2)}"
+            else:
+                current_identity = author_identity
+        if starts_entry or current_lines:
+            current_lines.append(value.strip())
+            current_locations.append(SourceLocation(source, page, line, "references"))
+    finish()
+    return [
+        ReferenceEntryRecord(
+            f"reference-{index:04d}", " ".join(lines), identity, tuple(locations)
+        )
+        for index, (lines, locations, identity) in enumerate(entries, 1)
+    ]
+
+
+def parse_citation_records(
+    raw_text: str, *, source: str = "input"
+) -> tuple[list[SentenceRecord], list[InTextCitationRecord], list[ReferenceEntryRecord]]:
+    """Parse review records without title, network, or fuzzy matching.
+
+    Sentence and record IDs depend only on source order. Numeric citations are
+    bracketed numbers/lists or 1-2 digit markers directly following sentence
+    punctuation. Author-year citations require a four-digit year and an
+    explicit parenthesized form. URLs in Markdown/HTML links become inline
+    citation identities after the same conservative normalization used by the
+    candidate extractor.
+    """
+    sentences: list[SentenceRecord] = []
+    citations: list[InTextCitationRecord] = []
+    for page, line, section, value in _line_records(raw_text):
+        if section != "body" or not value.strip():
+            continue
+        # Line-local splitting is intentional: Poppler line locations remain
+        # auditable and no heuristic paragraph reconstruction changes IDs.
+        parts = [
+            part for part in re.findall(
+                r".*?(?:[.!?](?:\[(?:\d{1,3}(?:\s*[,;]\s*\d{1,3})*)\]|[1-9]\d?)?(?=\s|$)|$)",
+                value.strip(),
+            ) if part
+        ]
+        for part in parts:
+            sentence = SentenceRecord(
+                f"sentence-{len(sentences) + 1:04d}", part.strip(),
+                SourceLocation(source, page, line, "body"),
+            )
+            sentences.append(sentence)
+            discovered: list[tuple[int, str, str, str]] = []
+            for marker in re.finditer(
+                r"\[(\d{1,3}(?:\s*[,;]\s*\d{1,3})*)\]|\((\d{1,3}(?:\s*[,;]\s*\d{1,3})*)\)",
+                part,
+            ):
+                values = marker.group(1) or marker.group(2)
+                for number in re.findall(r"\d{1,3}", values):
+                    discovered.append((marker.start(), marker.group(0), f"numeric:{int(number)}", "numeric"))
+            for marker in re.finditer(r"(?<=[.!?])[1-9]\d?(?=\s|$)", part):
+                discovered.append((marker.start(), marker.group(0), f"numeric:{int(marker.group(0))}", "numeric"))
+
+            year_pattern = r"(?:18|19|20)\d{2}[a-z]?"
+            author_pattern = r"[A-Z][A-Za-z'’-]+(?:\s+(?:et al\.|and|&)\s+[A-Z][A-Za-z'’-]+)?"
+            # Narrative form: Smith (2020). Parenthetical lists are split at
+            # semicolons so each explicit author/year pair gets its own record.
+            for marker in re.finditer(
+                rf"\b({author_pattern})\s*\(({year_pattern})\)", part
+            ):
+                identity = _author_year_identity(marker.group(0))
+                if identity is not None:
+                    discovered.append((marker.start(), marker.group(0), identity, "author_year"))
+            for parenthetical in re.finditer(r"\(([^()]*)\)", part):
+                for marker in re.finditer(
+                    rf"(?:^|;)\s*({author_pattern})\s*,?\s*({year_pattern})(?=\s*(?:;|$))",
+                    parenthetical.group(1),
+                ):
+                    evidence = marker.group(0).lstrip("; ")
+                    identity = _author_year_identity(evidence)
+                    if identity is not None:
+                        discovered.append((
+                            parenthetical.start() + 1 + marker.start(), evidence,
+                            identity, "author_year",
+                        ))
+            link_pattern = r"\[[^\]]+\]\((https?://[^\s)]+)\)|<a\s+[^>]*href=[\"'](https?://[^\"']+)[\"'][^>]*>"
+            for marker in re.finditer(link_pattern, part, re.I):
+                raw_url = marker.group(1) or marker.group(2)
+                normalized = _normalize_http_url(raw_url)
+                if normalized is not None:
+                    discovered.append((marker.start(), marker.group(0), f"destination:{normalized}", "inline_link"))
+            for _, evidence, identity, form in sorted(discovered, key=lambda item: (item[0], item[2], item[1])):
+                citations.append(InTextCitationRecord(
+                    f"citation-{len(citations) + 1:04d}", sentence.record_id,
+                    evidence, identity, form, sentence.source_location,
+                ))
+    return sentences, citations, _reference_entries(raw_text, source)
+
+
+def match_citation_candidates(
+    raw_text: str,
+    candidates: Sequence[CitationCandidate] | None = None,
+    *,
+    source: str = "input",
+) -> CitationMatchResult:
+    """Apply exact deterministic citation matching and never choose a tie.
+
+    Numeric/author-year citations match only an identical reference identity.
+    Inline links match only an identical destination on the same source line.
+    Reference candidates match only by their source line. Duplicate identities,
+    repeated candidate destinations, multiple destinations for one reference,
+    zero matches, and multiple valid matches remain explicit blocking states.
+    """
+    sentences, citations, references = parse_citation_records(raw_text, source=source)
+    candidate_list = list(candidates) if candidates is not None else extract_citation_candidates(raw_text, source=source)
+    dispositions: list[CitationDisposition] = []
+
+    references_by_identity: dict[str, list[ReferenceEntryRecord]] = {}
+    for reference in references:
+        if reference.identity is not None:
+            references_by_identity.setdefault(reference.identity, []).append(reference)
+
+    candidate_owners: dict[int, list[tuple[str, str]]] = {index: [] for index in range(len(candidate_list))}
+    candidate_keys: dict[str, list[int]] = {}
+    for index, candidate in enumerate(candidate_list):
+        candidate_keys.setdefault(candidate.normalized_destination, []).append(index)
+
+    citation_identity_counts: dict[tuple[str, str], int] = {}
+    for citation in citations:
+        key = (citation.sentence_id, citation.identity)
+        citation_identity_counts[key] = citation_identity_counts.get(key, 0) + 1
+
+    for citation in citations:
+        matches: list[tuple[str, str]] = []
+        if citation_identity_counts[(citation.sentence_id, citation.identity)] > 1:
+            dispositions.append(CitationDisposition(
+                "citation", citation.record_id, "duplicate_identity", None,
+                "citation identity is repeated in the same sentence",
+            ))
+            continue
+        if citation.form == "inline_link":
+            destination = citation.identity.removeprefix("destination:")
+            for index in candidate_keys.get(destination, []):
+                candidate = candidate_list[index]
+                if (candidate.source_location.page, candidate.source_location.line) == (
+                    citation.source_location.page, citation.source_location.line
+                ):
+                    matches.append(("candidate", f"candidate-{index + 1:04d}"))
+                    candidate_owners[index].append(("citation", citation.record_id))
+        else:
+            matches = [("reference", item.record_id) for item in references_by_identity.get(citation.identity, [])]
+        status = "matched" if len(matches) == 1 else ("unresolved" if not matches else "ambiguous")
+        dispositions.append(CitationDisposition(
+            "citation", citation.record_id, status, matches[0][1] if len(matches) == 1 else None,
+            "one exact deterministic match" if len(matches) == 1 else
+            ("no exact reference/candidate match" if not matches else "multiple exact matches; tie not selected"),
+        ))
+
+    for reference in references:
+        identity_peers = references_by_identity.get(reference.identity, []) if reference.identity else []
+        locations = {(item.page, item.line) for item in reference.source_locations}
+        owned = [
+            index for index, candidate in enumerate(candidate_list)
+            if candidate.source_location.section == "references"
+            and (candidate.source_location.page, candidate.source_location.line) in locations
+        ]
+        for index in owned:
+            candidate_owners[index].append(("reference", reference.record_id))
+        destinations = {candidate_list[index].normalized_destination for index in owned}
+        if reference.identity is None:
+            status, reason = "malformed", "reference has no numeric or author-year identity"
+        elif len(identity_peers) > 1:
+            status, reason = "duplicate_identity", "reference identity is not unique"
+        elif not owned:
+            status, reason = "unlinked", "reference has no citation destination candidate"
+        elif len(owned) > 1 and len(destinations) == 1:
+            status, reason = "duplicate_candidate", "reference repeats one destination candidate"
+        elif len(destinations) > 1:
+            status, reason = "conflicting_destination", "reference has multiple distinct destinations"
+        else:
+            status, reason = "matched", "one exact destination candidate"
+        dispositions.append(CitationDisposition(
+            "reference", reference.record_id, status,
+            f"candidate-{owned[0] + 1:04d}" if status == "matched" else None, reason,
+        ))
+
+    for index, candidate in enumerate(candidate_list):
+        owners = candidate_owners[index]
+        duplicates = candidate_keys[candidate.normalized_destination]
+        if len(duplicates) > 1:
+            status, reason = "duplicate_candidate", "normalized destination occurs in multiple candidate records"
+        elif not owners:
+            status, reason = "orphaned", "candidate has no exact citation or reference owner"
+        elif len(owners) > 1:
+            status, reason = "ambiguous", "candidate has multiple exact owners; tie not selected"
+        else:
+            status, reason = "matched", "one exact deterministic owner"
+        dispositions.append(CitationDisposition(
+            "candidate", f"candidate-{index + 1:04d}", status,
+            owners[0][1] if status == "matched" else None, reason,
+        ))
+
+    # Sentences are first-class records too. A sentence with no citation is not
+    # an error; a cited sentence inherits the worst deterministic citation state.
+    citation_dispositions = {item.subject_id: item for item in dispositions if item.subject_type == "citation"}
+    for sentence in sentences:
+        members = [item for item in citations if item.sentence_id == sentence.record_id]
+        failures = [citation_dispositions[item.record_id] for item in members if citation_dispositions[item.record_id].status != "matched"]
+        status = "unresolved" if failures else "matched"
+        reason = "contains unresolved or ambiguous citation records" if failures else (
+            "all citation records matched" if members else "sentence contains no citation"
+        )
+        dispositions.append(CitationDisposition("sentence", sentence.record_id, status, None, reason))
+
+    return CitationMatchResult(
+        tuple(sentences), tuple(citations), tuple(references), tuple(candidate_list), tuple(dispositions)
+    )
 
 
 def extract_pdf_links(source: Path | InputSnapshot) -> list[tuple[str, str]]:

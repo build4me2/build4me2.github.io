@@ -20,7 +20,33 @@ annotation order followed by text order and the extractor never performs network
 requests. Normalization is limited to URL scheme/host casing, HTML entity
 unescaping, clear surrounding punctuation, and DOI case/canonical resolver form.
 It does not infer destinations from author names, titles, domains without a URL
-scheme, or other citation prose.
+scheme, or other citation prose. Repeated occurrences are retained rather than
+silently deduplicated because duplicate evidence must be reviewed.
+
+### Deterministic matching records
+
+`parse_citation_records(raw_text, source=...)` assigns source-order IDs to body
+sentences, bracketed/trailing numeric markers, parenthesized author-year forms,
+inline Markdown/HTML links, and numbered or author-year reference entries.
+`match_citation_candidates(raw_text, candidates, source=...)` gives every parsed
+record and candidate a disposition. Its rules are intentionally narrow:
+
+- numeric and author-year citations match only one exactly identical reference
+  identity (`numeric:N` or normalized first-surname/year, including year suffix);
+- inline links match only the same normalized candidate destination on the same
+  source page and line;
+- reference destinations match only candidates extracted on that entry's source
+  lines; and
+- source order determines IDs and report order, but is never used to break a tie.
+
+No titles, similarity, nearby entries, or network metadata participate. Zero
+matches are `unresolved`, while multiple exact matches are `ambiguous`; neither
+selects a target. Duplicate reference/citation identities, duplicate candidate
+destinations, unlinked/malformed references, orphan candidates, and references
+with conflicting destinations receive explicit blocking statuses. A sentence
+with citations inherits any blocking citation state. `CitationMatchResult.blocking`
+is therefore true whenever any disposition is not `matched` (uncited sentences
+are explicitly `matched` with a no-citation explanation).
 
 ## Safety contract
 
