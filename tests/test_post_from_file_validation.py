@@ -115,6 +115,60 @@ class PdfExtractionFailureTests(unittest.TestCase):
         )
 
 
+class AtomicOutputTests(unittest.TestCase):
+    def staging_files(self, directory: Path) -> list[Path]:
+        return list(directory.glob(".*.tmp"))
+
+    def test_success_installs_exactly_one_complete_post_and_removes_staging(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            output = root / "post.md"
+            post = "+++\ntitle = \"A post\"\n+++\n\nComplete body.\n"
+
+            converter._atomic_create_post(output, post)
+
+            self.assertEqual(post.encode("utf-8"), output.read_bytes())
+            self.assertEqual([], self.staging_files(root))
+
+    def test_flush_failure_leaves_no_destination_or_temporary_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            output = root / "post.md"
+            with mock.patch.object(converter.os, "fsync", side_effect=OSError("disk failure")):
+                with self.assertRaises(converter.IngestionError) as caught:
+                    converter._atomic_create_post(output, "complete post\n")
+
+            self.assertEqual("output_write", caught.exception.category)
+            self.assertFalse(output.exists())
+            self.assertEqual([], self.staging_files(root))
+
+    def test_commit_race_preserves_existing_destination_byte_for_byte(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            output = root / "post.md"
+            original = b"existing post bytes\x00\xff"
+            output.write_bytes(original)
+
+            with self.assertRaises(converter.IngestionError) as caught:
+                converter._atomic_create_post(output, "replacement\n")
+
+            self.assertEqual("output_exists", caught.exception.category)
+            self.assertEqual(original, output.read_bytes())
+            self.assertEqual([], self.staging_files(root))
+
+    @mock.patch.object(converter, "_validate_staged_post")
+    def test_staged_validation_failure_cleans_up_without_publishing(self, validate) -> None:
+        validate.side_effect = converter.IngestionError("output_write", "invalid staged post")
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            output = root / "post.md"
+            with self.assertRaises(converter.IngestionError):
+                converter._atomic_create_post(output, "complete post\n")
+
+            self.assertFalse(output.exists())
+            self.assertEqual([], self.staging_files(root))
+
+
 class MetadataAndOutputValidationTests(unittest.TestCase):
     def assert_category(self, category: str, action) -> None:
         with self.assertRaises(converter.IngestionError) as caught:

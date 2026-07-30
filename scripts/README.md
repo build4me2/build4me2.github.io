@@ -17,7 +17,11 @@ and slugs use only lowercase ASCII letters, digits, and single hyphens. Explicit
 `--output` paths must name a new `.md` file below this checkout's
 `content/posts/` tree; output directories are never created and existing posts
 are never overwritten. Validation failures use stable `ERROR[category]: ...`
-diagnostics, return nonzero, and do not create an output file.
+diagnostics, return nonzero, and do not create an output file. After all
+extraction and citation checks pass, the complete post is written to a hidden
+temporary file in the destination directory, flushed and verified byte-for-byte,
+then atomically installed without replacement. Any failure removes the staging
+file; a destination created concurrently or already present remains unchanged.
 
 ## Extraction failure policy
 

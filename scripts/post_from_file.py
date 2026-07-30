@@ -24,6 +24,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Sequence
@@ -566,6 +567,83 @@ def front_matter(title: str, date: str, slug: str) -> str:
     return f'''+++\ntitle = "{safe_title}"\ndate = {date}\ndraft = false\nslug = "{slug}"\nhideSummary = true\nShowToc = false\n+++\n\n'''
 
 
+def _validate_staged_post(path: Path, expected: bytes) -> None:
+    """Verify that the flushed staging file contains the complete rendered post."""
+    try:
+        actual = path.read_bytes()
+    except OSError as exc:
+        raise IngestionError(
+            "output_write", f"cannot validate staged output: {exc.strerror or exc}"
+        ) from None
+    if actual != expected:
+        raise IngestionError("output_write", "staged output failed complete-content validation")
+    try:
+        actual.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise IngestionError(
+            "output_write", f"staged output is not UTF-8 at byte {exc.start}"
+        ) from None
+
+
+def _atomic_create_post(output: Path, post: str) -> None:
+    """Durably stage and atomically create ``output`` without replacing it.
+
+    The hard-link operation is the commit point: it makes the already-flushed
+    inode visible under the destination name in one filesystem operation and
+    fails if that name was created after validation.  Staging in the output
+    directory guarantees both names are on the same filesystem.
+    """
+    expected = post.encode("utf-8")
+    temporary: Path | None = None
+    try:
+        try:
+            descriptor, name = tempfile.mkstemp(
+                dir=output.parent, prefix=f".{output.name}.", suffix=".tmp"
+            )
+            temporary = Path(name)
+        except OSError as exc:
+            raise IngestionError(
+                "output_write", f"cannot create staged output: {exc.strerror or exc}"
+            ) from None
+
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as destination:
+                written = destination.write(post)
+                if written != len(post):
+                    raise IngestionError("output_write", "could not write the complete staged output")
+                destination.flush()
+                os.fsync(destination.fileno())
+        except IngestionError:
+            raise
+        except OSError as exc:
+            raise IngestionError(
+                "output_write", f"cannot flush staged output: {exc.strerror or exc}"
+            ) from None
+
+        _validate_staged_post(temporary, expected)
+        try:
+            # Unlike rename/replace, link fails rather than overwriting a file
+            # created by another process between validate_output and this point.
+            os.link(temporary, output, follow_symlinks=False)
+        except FileExistsError:
+            raise IngestionError(
+                "output_exists", f"refusing to overwrite existing post: {output}"
+            ) from None
+        except OSError as exc:
+            raise IngestionError(
+                "output_write", f"cannot install output atomically: {exc.strerror or exc}"
+            ) from None
+    finally:
+        if temporary is not None:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                # Preserve the primary, actionable ingestion error. This is a
+                # best-effort fallback for filesystems that become unavailable
+                # while cleanup is in progress.
+                pass
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = IngestionArgumentParser(description="Create a Hugo post from a PDF or TXT file.")
     parser.add_argument("input", type=Path, help="PDF or TXT file")
@@ -603,15 +681,8 @@ def run(argv: Sequence[str] | None = None) -> Path:
         raise IngestionError("empty_extraction", "extraction produced no publishable body text")
     check_all_sources_embedded(body, pdf_links)
 
-    try:
-        # Exclusive creation also closes the validation/write race: another
-        # process can never cause this command to overwrite an existing post.
-        with output.open("x", encoding="utf-8", newline="\n") as destination:
-            destination.write(front_matter(title, date, slug) + body + "\n")
-    except FileExistsError:
-        raise IngestionError("output_exists", f"refusing to overwrite existing post: {output}") from None
-    except OSError as exc:
-        raise IngestionError("output_write", f"cannot create output: {exc.strerror or exc}") from None
+    post = front_matter(title, date, slug) + body + "\n"
+    _atomic_create_post(output, post)
     return output
 
 
