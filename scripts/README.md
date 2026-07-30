@@ -8,6 +8,20 @@ Blog rule: **every cited sentence must carry its source link embedded inline.** 
 2. Links anchored on numbered footnotes are embedded automatically on the sentence that carries that footnote marker in the body.
 3. Before any output is staged, it cross-checks every recovered PDF citation destination. Any destination still missing from the post blocks the transaction with `ERROR[missing_citations]`; no post or temporary file is created. For APA author-year papers (no footnote numbers), add each source with `--link 'cited text=URL'` and retry.
 
+### Deterministic citation candidate recovery
+
+Citation review tooling can call `extract_citation_candidates(raw_text, pdf_links,
+source=...)`. It recovers each explicit PDF annotation, visible HTTP(S) URL,
+conservatively wrapped line/page URL, DOI resolver URL, `doi:` identifier, and
+bare DOI from both body and reference text. Each immutable candidate retains its
+raw evidence, normalized destination, extraction method, source/page/line/section
+location, and provenance; `to_dict()` provides a JSON-ready record. Ordering is
+annotation order followed by text order and the extractor never performs network
+requests. Normalization is limited to URL scheme/host casing, HTML entity
+unescaping, clear surrounding punctuation, and DOI case/canonical resolver form.
+It does not infer destinations from author names, titles, domains without a URL
+scheme, or other citation prose.
+
 ## Safety contract
 
 The command accepts only regular, non-symlink `.pdf` and UTF-8 `.txt` files of

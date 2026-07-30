@@ -29,7 +29,8 @@ import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Sequence
+from typing import Mapping, NamedTuple, Sequence
+from urllib.parse import urlsplit, urlunsplit
 
 BLOG_ROOT = Path(__file__).resolve().parents[1]
 POSTS_DIR = BLOG_ROOT / "content" / "posts"
@@ -56,6 +57,53 @@ class IngestionArgumentParser(argparse.ArgumentParser):
 
     def error(self, message: str) -> None:
         raise IngestionError("usage", message)
+
+# DOI's registrant component is 4-9 digits.  The suffix character set follows
+# the Crossref-recommended permissive matcher; terminal prose punctuation is
+# removed separately so evidence is never discarded from the record.
+DOI_PATTERN = re.compile(r"10\.\d{4,9}/[-._;()/:A-Z0-9]+", re.IGNORECASE)
+URL_START_PATTERN = re.compile(r"https?://", re.IGNORECASE)
+URL_TOKEN_PATTERN = re.compile(r"[^\s<>\"'`]+")
+
+
+class SourceLocation(NamedTuple):
+    """Stable, human-readable location of candidate evidence."""
+
+    source: str
+    page: int | None
+    line: int | None
+    section: str
+    annotation: int | None = None
+
+
+class CitationCandidate(NamedTuple):
+    """One immutable citation destination together with its original evidence."""
+
+    raw_evidence: str
+    normalized_destination: str
+    extraction_method: str
+    source_location: SourceLocation
+    provenance: str
+
+    # Convenient names for callers which deal specifically in URLs.
+    @property
+    def raw(self) -> str:
+        return self.raw_evidence
+
+    @property
+    def normalized_url(self) -> str:
+        return self.normalized_destination
+
+    def to_dict(self) -> dict[str, object]:
+        """Return a JSON-ready representation without losing null locations."""
+        return {
+            "raw_evidence": self.raw_evidence,
+            "normalized_destination": self.normalized_destination,
+            "extraction_method": self.extraction_method,
+            "source_location": self.source_location._asdict(),
+            "provenance": self.provenance,
+        }
+
 
 HEADER_PATTERNS = [
     r"^Manisha Chand$",
@@ -479,6 +527,192 @@ def read_input(source: Path | InputSnapshot) -> str:
             f"pdftotext output appears incomplete ({visible_characters} visible characters for {pages} pages)",
         )
     return text
+
+
+def _trim_destination(value: str) -> str:
+    """Remove punctuation which clearly belongs to surrounding prose."""
+    value = value.strip().replace("\u200b", "")
+    value = value.rstrip(".,;:!?")
+    # Keep balanced parentheses, which are valid and common in DOI suffixes,
+    # while removing a closing delimiter introduced by prose.
+    while value.endswith(")") and value.count(")") > value.count("("):
+        value = value[:-1]
+    while value.endswith("]") or value.endswith("}"):
+        value = value[:-1]
+    return value
+
+
+def _normalize_http_url(raw: str) -> str | None:
+    """Conservatively normalize an explicit HTTP(S) token."""
+    import html as html_mod
+
+    value = _trim_destination(html_mod.unescape(raw).replace("\n", "").replace("\r", "").replace("\x0c", ""))
+    try:
+        parsed = urlsplit(value)
+        port = parsed.port  # Force validation of malformed ports.
+    except ValueError:
+        return None
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
+        return None
+    host = parsed.hostname.lower()
+    if "." not in host and host != "localhost":
+        return None
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    netloc = host
+    if parsed.username is not None:
+        credentials = parsed.username
+        if parsed.password is not None:
+            credentials += f":{parsed.password}"
+        netloc = f"{credentials}@{netloc}"
+    if port is not None:
+        netloc += f":{port}"
+    return urlunsplit((parsed.scheme.lower(), netloc, parsed.path, parsed.query, parsed.fragment))
+
+
+def _normalize_doi(raw: str) -> tuple[str, str] | None:
+    compact = re.sub(r"[\r\n\x0c]+", "", raw).strip()
+    compact = re.sub(r"(?i)^doi\s*:\s*", "", compact)
+    if compact.lower().startswith("https://doi.org/") or compact.lower().startswith("http://doi.org/"):
+        compact = compact.split("doi.org/", 1)[1]
+    compact = _trim_destination(compact)
+    match = DOI_PATTERN.fullmatch(compact)
+    if match is None or compact.endswith("/"):
+        return None
+    doi = match.group(0).lower()
+    return doi, f"https://doi.org/{doi}"
+
+
+def _line_records(text: str) -> list[tuple[int, int, str, str]]:
+    """Return (page, line-on-page, section, text) records in source order."""
+    records: list[tuple[int, int, str, str]] = []
+    section = "body"
+    for page_number, page in enumerate(text.split("\x0c"), 1):
+        for line_number, line in enumerate(page.splitlines(), 1):
+            if re.match(r"^\s*(references|bibliography|works cited)\s*$", line, re.I):
+                section = "references"
+            records.append((page_number, line_number, section, line))
+    return records
+
+
+def _wrapped_token(records: list[tuple[int, int, str, str]], index: int, start: int) -> str:
+    """Recover an URL/DOI token wrapped after an explicit continuation mark.
+
+    Joining is deliberately narrow: an ordinary complete URL followed by prose
+    is never concatenated.  A continuation is accepted only after URL syntax
+    which requires or strongly signals more input (slash, query separator,
+    fragment, hyphen, equals), including across a PDF form-feed page boundary.
+    """
+    token_match = URL_TOKEN_PATTERN.match(records[index][3], start)
+    if token_match is None:
+        return ""
+    raw = token_match.group(0)
+    current = index
+    while token_match.end() == len(records[current][3]) and current + 1 < len(records):
+        next_line = records[current + 1][3]
+        leading = len(next_line) - len(next_line.lstrip())
+        continuation = URL_TOKEN_PATTERN.match(next_line, leading)
+        if continuation is None:
+            break
+        page_break = records[current + 1][0] != records[current][0]
+        if not (
+            raw.endswith(("/", "-", "_", "?", "&", "=", "#"))
+            or _normalize_http_url(raw) is None
+            or page_break
+        ):
+            break
+        raw += "\x0c" if page_break else "\n"
+        raw += continuation.group(0)
+        current += 1
+        token_match = continuation
+    return raw
+
+
+def extract_citation_candidates(
+    raw_text: str,
+    pdf_links: Sequence[tuple[str, str] | tuple[str, str, object] | Mapping[str, object]] = (),
+    *,
+    source: str = "input",
+) -> list[CitationCandidate]:
+    """Extract explicit citation destinations in deterministic source order.
+
+    Sources include PDF hyperlink annotations, visible HTTP(S) URLs (including
+    conservative line/page wraps), DOI resolver URLs, ``doi:`` forms, and bare
+    DOI identifiers.  The function does not infer links from titles, authors,
+    or other prose and performs no network access.
+    """
+    found: list[CitationCandidate] = []
+
+    for annotation_index, annotation in enumerate(pdf_links, 1):
+        if isinstance(annotation, Mapping):
+            raw_url = str(annotation.get("url", ""))
+            page_value = annotation.get("page")
+            page = page_value if isinstance(page_value, int) else None
+            raw_label = str(annotation.get("label", ""))
+        else:
+            raw_label, raw_url = str(annotation[0]), str(annotation[1])
+            page = annotation[2] if len(annotation) > 2 and isinstance(annotation[2], int) else None
+        normalized = _normalize_http_url(raw_url)
+        if normalized is None:
+            continue
+        found.append(CitationCandidate(
+            raw_evidence=raw_url,
+            normalized_destination=normalized,
+            extraction_method="pdf_annotation",
+            source_location=SourceLocation(source, page, None, "annotation", annotation_index),
+            provenance=f"PDF hyperlink annotation {annotation_index}; label={raw_label!r}",
+        ))
+
+    records = _line_records(raw_text)
+    for record_index, (page, line, section, value) in enumerate(records):
+        occupied: list[tuple[int, int]] = []
+        for start_match in URL_START_PATTERN.finditer(value):
+            raw = _wrapped_token(records, record_index, start_match.start())
+            normalized = _normalize_http_url(raw)
+            if normalized is None:
+                continue
+            doi = _normalize_doi(normalized)
+            method = "doi_url" if doi is not None else ("visible_url_wrapped" if re.search(r"[\n\x0c]", raw) else "visible_url")
+            destination = doi[1] if doi is not None else normalized
+            found.append(CitationCandidate(
+                raw, destination, method, SourceLocation(source, page, line, section),
+                "visible body text" if section == "body" else "visible reference-section text",
+            ))
+            occupied.append((start_match.start(), start_match.start() + len(raw.splitlines()[0])))
+
+        # DOI identifiers are evidence in their own right.  Exclude those
+        # already represented by a visible resolver URL on this line.
+        doi_text = value
+        for match in re.finditer(r"(?i)(doi\s*:\s*)?(10\.\d{4,9}/[-._;()/:A-Z0-9]+)", doi_text):
+            if any(left <= match.start() < right for left, right in occupied):
+                continue
+            raw = match.group(0)
+            normalized_doi = _normalize_doi(raw)
+            if normalized_doi is None:
+                continue
+            found.append(CitationCandidate(
+                raw, normalized_doi[1], "doi_prefixed" if match.group(1) else "bare_doi",
+                SourceLocation(source, page, line, section),
+                "visible body text" if section == "body" else "visible reference-section text",
+            ))
+
+        # Explicit DOI forms split immediately after the slash are unambiguous.
+        split_match = re.search(r"(?i)(doi\s*:\s*)?(10\.\d{4,9}/)\s*$", value)
+        if split_match and record_index + 1 < len(records):
+            continuation = re.match(r"\s*([-._;()/:A-Z0-9]+)", records[record_index + 1][3], re.I)
+            if continuation:
+                separator = "\x0c" if records[record_index + 1][0] != page else "\n"
+                raw = split_match.group(0).rstrip() + separator + continuation.group(1)
+                normalized_doi = _normalize_doi(raw)
+                if normalized_doi is not None:
+                    found.append(CitationCandidate(
+                        raw, normalized_doi[1], "doi_prefixed_wrapped" if split_match.group(1) else "bare_doi_wrapped",
+                        SourceLocation(source, page, line, section),
+                        "visible body text" if section == "body" else "visible reference-section text",
+                    ))
+
+    # Preserve distinct evidence/methods while suppressing only exact repeats.
+    return list(dict.fromkeys(found))
 
 
 def extract_pdf_links(source: Path | InputSnapshot) -> list[tuple[str, str]]:
