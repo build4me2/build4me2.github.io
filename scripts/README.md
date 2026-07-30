@@ -8,6 +8,17 @@ Blog rule: **every cited sentence must carry its source link embedded inline.** 
 2. Links anchored on numbered footnotes are embedded automatically on the sentence that carries that footnote marker in the body.
 3. At the end it cross-checks: any PDF source link still missing from the post is printed as a WARNING with a ready-made `--link` flag to copy. Do not publish a post while that warning lists missing sources — for APA author-year papers (no footnote numbers), add each source with `--link 'cited text=URL'`.
 
+## Safety contract
+
+The command accepts only regular, non-symlink `.pdf` and UTF-8 `.txt` files of
+at most 25 MiB. The extension must match the file contents. Titles must be
+non-empty, dates must be valid ISO 8601 dates (or timezone-qualified timestamps),
+and slugs use only lowercase ASCII letters, digits, and single hyphens. Explicit
+`--output` paths must name a new `.md` file below this checkout's
+`content/posts/` tree; output directories are never created and existing posts
+are never overwritten. Validation failures use stable `ERROR[category]: ...`
+diagnostics, return nonzero, and do not create an output file.
+
 Examples:
 
 ```bash
@@ -24,6 +35,10 @@ scripts/post_from_file.py "/path/to/paper.pdf" \
 ```
 
 Important: use `--link 'exact cited text=URL'` for each numbered citation you want embedded. The visible cited text stays the same; it only becomes underlined/clickable. If the PDF has a citation marker immediately after that text, like `...positive outcome in that regard.3`, the script removes the trailing number after embedding the link.
+
+The default destination is `content/posts/<slug>.md`. If a deliberate retry
+needs the same slug, review and move/remove the old post yourself; the converter
+will not silently replace it.
 
 After creating a post, use the repository-pinned Hugo Extended 0.162.0 toolchain (see `docs/preservation-baselines.md` and `docs/reproducible-builds.md`):
 

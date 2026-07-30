@@ -18,13 +18,37 @@ Examples:
 from __future__ import annotations
 
 import argparse
+import os
 import re
+import stat
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Sequence
 
 BLOG_ROOT = Path(__file__).resolve().parents[1]
 POSTS_DIR = BLOG_ROOT / "content" / "posts"
+SUPPORTED_INPUT_SUFFIXES = frozenset({".pdf", ".txt"})
+MAX_INPUT_BYTES = 25 * 1024 * 1024
+MAX_TITLE_LENGTH = 300
+MAX_SLUG_LENGTH = 100
+SLUG_PATTERN = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
+
+
+class IngestionError(Exception):
+    """An expected, categorized command failure safe to show to a user."""
+
+    def __init__(self, category: str, message: str) -> None:
+        super().__init__(message)
+        self.category = category
+
+
+class IngestionArgumentParser(argparse.ArgumentParser):
+    """Turn argparse failures into the CLI's stable diagnostic format."""
+
+    def error(self, message: str) -> None:
+        raise IngestionError("usage", message)
 
 HEADER_PATTERNS = [
     r"^Manisha Chand$",
@@ -36,17 +60,167 @@ HEADER_PATTERNS = [
 
 
 def slugify(title: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-") or "post"
+    return re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
+
+
+def _has_parent_traversal(path: Path) -> bool:
+    return ".." in path.parts
+
+
+def _contains_symlink(path: Path) -> bool:
+    current = Path(path.anchor) if path.is_absolute() else Path.cwd()
+    parts = path.parts[1:] if path.is_absolute() else path.parts
+    for part in parts:
+        current /= part
+        if current.is_symlink():
+            return True
+    return False
+
+
+def validate_input(path: Path, max_bytes: int = MAX_INPUT_BYTES) -> Path:
+    """Validate an input without following a final-component symlink."""
+    if _has_parent_traversal(path):
+        raise IngestionError("unsafe_input", "input path must not contain '..'")
+    suffix = path.suffix.lower()
+    if suffix not in SUPPORTED_INPUT_SUFFIXES:
+        expected = ", ".join(sorted(SUPPORTED_INPUT_SUFFIXES))
+        raise IngestionError("unsupported_input", f"input extension must be one of: {expected}")
+
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        raise IngestionError("missing_input", f"input does not exist: {path}") from None
+    except OSError as exc:
+        raise IngestionError("invalid_input", f"cannot inspect input: {exc.strerror or exc}") from None
+    if stat.S_ISLNK(info.st_mode) or _contains_symlink(path.absolute()):
+        raise IngestionError("unsafe_input", "input path must not contain symbolic links")
+    if not stat.S_ISREG(info.st_mode):
+        raise IngestionError("invalid_input", "input must be a regular file")
+    if info.st_size > max_bytes:
+        raise IngestionError(
+            "input_too_large", f"input is {info.st_size} bytes; maximum is {max_bytes} bytes"
+        )
+
+    # Check the bytes as well as the name so renamed PDFs and obvious binary TXT
+    # files cannot enter the wrong extraction path.
+    try:
+        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+        fd = os.open(path, flags)
+        with os.fdopen(fd, "rb") as stream:
+            opened = os.fstat(stream.fileno())
+            if not stat.S_ISREG(opened.st_mode) or (opened.st_dev, opened.st_ino) != (info.st_dev, info.st_ino):
+                raise IngestionError("unsafe_input", "input changed while it was being validated")
+            head = stream.read(4096)
+    except IngestionError:
+        raise
+    except OSError as exc:
+        raise IngestionError("invalid_input", f"cannot read input: {exc.strerror or exc}") from None
+
+    is_pdf = head.startswith(b"%PDF-")
+    if suffix == ".pdf" and not is_pdf:
+        raise IngestionError("misleading_input", "a .pdf input must begin with a PDF signature")
+    if suffix == ".txt":
+        if is_pdf:
+            raise IngestionError("misleading_input", "a PDF document must not use a .txt extension")
+        if b"\x00" in head:
+            raise IngestionError("misleading_input", "a .txt input must contain text, not binary data")
+        try:
+            head.decode("utf-8")
+        except UnicodeDecodeError:
+            raise IngestionError("misleading_input", "a .txt input must be UTF-8 encoded") from None
+    return path
+
+
+def validate_title(title: str) -> str:
+    title = title.strip()
+    if not title:
+        raise IngestionError("invalid_title", "title must not be empty")
+    if len(title) > MAX_TITLE_LENGTH:
+        raise IngestionError("invalid_title", f"title must be at most {MAX_TITLE_LENGTH} characters")
+    if any(ord(character) < 32 or ord(character) == 127 for character in title):
+        raise IngestionError("invalid_title", "title must not contain control characters")
+    return title
+
+
+def validate_slug(slug: str) -> str:
+    if not slug or len(slug) > MAX_SLUG_LENGTH or SLUG_PATTERN.fullmatch(slug) is None:
+        raise IngestionError(
+            "invalid_slug",
+            f"slug must be 1-{MAX_SLUG_LENGTH} lowercase ASCII letters, digits, or single hyphens",
+        )
+    return slug
+
+
+def validate_date(value: str | None) -> str:
+    if value is None:
+        return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        try:
+            datetime.strptime(value, "%Y-%m-%d")
+        except ValueError:
+            raise IngestionError("invalid_date", "date must be a valid ISO 8601 date or timestamp") from None
+        return value + "T09:00:00-07:00"
+    timestamp_pattern = r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})"
+    if re.fullmatch(timestamp_pattern, value) is None:
+        raise IngestionError("invalid_date", "date must be a valid ISO 8601 date or timestamp")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        raise IngestionError("invalid_date", "date must be a valid ISO 8601 date or timestamp") from None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise IngestionError("invalid_date", "timestamp must include a UTC offset")
+    return value
+
+
+def validate_output(path: Path, posts_dir: Path = POSTS_DIR) -> Path:
+    """Require a new Markdown destination below the real posts directory."""
+    if _has_parent_traversal(path):
+        raise IngestionError("unsafe_output", "output path must not contain '..'")
+    candidate = path if path.is_absolute() else Path.cwd() / path
+    try:
+        posts_root = posts_dir.resolve(strict=True)
+    except OSError as exc:
+        raise IngestionError("unsafe_output", f"configured posts directory is unavailable: {exc}") from None
+    candidate = candidate.absolute()
+    resolved = candidate.resolve(strict=False)
+    try:
+        resolved.relative_to(posts_root)
+    except ValueError:
+        raise IngestionError("unsafe_output", f"output must be inside {posts_root}") from None
+    if resolved == posts_root or candidate.suffix != ".md":
+        raise IngestionError("unsafe_output", "output must be a .md file inside the posts directory")
+
+    # Reject symlinked path components even if they happen to resolve back into
+    # the posts tree. This keeps destination identity unambiguous.
+    try:
+        relative = candidate.relative_to(posts_root)
+    except ValueError:
+        raise IngestionError("unsafe_output", f"output must use a path below {posts_root}") from None
+    current = posts_root
+    for part in relative.parts:
+        current = current / part
+        if current.is_symlink():
+            raise IngestionError("unsafe_output", "output path must not contain symbolic links")
+    if candidate.exists():
+        raise IngestionError("output_exists", f"refusing to overwrite existing post: {candidate}")
+    if not candidate.parent.is_dir():
+        raise IngestionError("unsafe_output", "output parent must be an existing directory")
+    return candidate
 
 
 def read_input(path: Path) -> str:
     if path.suffix.lower() == ".pdf":
         try:
             # -layout helps detect paragraph/page-footnote structure.
-            return subprocess.check_output(["pdftotext", "-layout", str(path), "-"], text=True, errors="ignore")
+            return subprocess.check_output(["pdftotext", "-layout", str(path), "-"], text=True)
         except FileNotFoundError:
-            raise SystemExit("Error: pdftotext is required. Install poppler-utils.")
-    return path.read_text(errors="ignore")
+            raise IngestionError("missing_tool", "pdftotext is required; install poppler-utils") from None
+    try:
+        return path.read_text(encoding="utf-8")
+    except UnicodeError as exc:
+        raise IngestionError("extraction", f"input is not valid UTF-8: {exc}") from None
+    except OSError as exc:
+        raise IngestionError("extraction", f"cannot read input: {exc.strerror or exc}") from None
 
 
 def extract_pdf_links(path: Path) -> list[tuple[str, str]]:
@@ -279,41 +453,65 @@ def check_all_sources_embedded(text: str, pdf_links: list[tuple[str, str]]) -> N
 
 
 def front_matter(title: str, date: str, slug: str) -> str:
-    safe_title = title.replace('"', '\\"')
+    safe_title = title.replace("\\", "\\\\").replace('"', '\\"')
     return f'''+++\ntitle = "{safe_title}"\ndate = {date}\ndraft = false\nslug = "{slug}"\nhideSummary = true\nShowToc = false\n+++\n\n'''
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Create a Hugo post from a PDF or TXT file.")
+def build_parser() -> argparse.ArgumentParser:
+    parser = IngestionArgumentParser(description="Create a Hugo post from a PDF or TXT file.")
     parser.add_argument("input", type=Path, help="PDF or TXT file")
     parser.add_argument("--title", required=True, help="Post title")
     parser.add_argument("--date", help="Post date, e.g. 2026-06-02 or 2026-06-02T09:00:00-07:00")
     parser.add_argument("--slug", help="URL slug; defaults to slugified title")
     parser.add_argument("--link", action="append", default=[], help="Embed citation link: TEXT=URL. Can repeat.")
     parser.add_argument("--keep-references", action="store_true", help="Keep a final References section if present")
-    parser.add_argument("--output", type=Path, help="Output .md path; defaults to content/posts/<slug>.md")
-    args = parser.parse_args()
+    parser.add_argument("--output", type=Path, help="Output .md path; must be below content/posts")
+    return parser
 
-    slug = args.slug or slugify(args.title)
-    date = args.date or datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
-    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
-        date += "T09:00:00-07:00"
 
-    pdf_links = extract_pdf_links(args.input)
-    raw_text = read_input(args.input)
-    body = parse_body(raw_text, args.title, args.keep_references)
+def run(argv: Sequence[str] | None = None) -> Path:
+    """Validate, convert, and exclusively create one post; return its path."""
+    args = build_parser().parse_args(argv)
+    input_path = validate_input(args.input)
+    title = validate_title(args.title)
+    slug = validate_slug(args.slug if args.slug is not None else slugify(title))
+    date = validate_date(args.date)
+    output = validate_output(args.output or POSTS_DIR / f"{slug}.md")
+    for item in args.link:
+        if "=" not in item or not all(part.strip() for part in item.split("=", 1)):
+            raise IngestionError("invalid_link", "--link must use non-empty TEXT=URL values")
+
+    pdf_links = extract_pdf_links(input_path)
+    raw_text = read_input(input_path)
+    body = parse_body(raw_text, title, args.keep_references)
     body = fix_extraction_artifacts(body)
     body = embed_footnote_links(body, footnote_url_map(pdf_links, raw_text))
     body = embed_links(body, args.link)
     body = "\n\n".join(p.strip() for p in body.split("\n\n") if p.strip())
     check_all_sources_embedded(body, pdf_links)
 
-    output = args.output or POSTS_DIR / f"{slug}.md"
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(front_matter(args.title, date, slug) + body + "\n")
+    try:
+        # Exclusive creation also closes the validation/write race: another
+        # process can never cause this command to overwrite an existing post.
+        with output.open("x", encoding="utf-8", newline="\n") as destination:
+            destination.write(front_matter(title, date, slug) + body + "\n")
+    except FileExistsError:
+        raise IngestionError("output_exists", f"refusing to overwrite existing post: {output}") from None
+    except OSError as exc:
+        raise IngestionError("output_write", f"cannot create output: {exc.strerror or exc}") from None
+    return output
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    try:
+        output = run(argv)
+    except IngestionError as exc:
+        print(f"ERROR[{exc.category}]: {exc}", file=sys.stderr)
+        return 2
     print(f"Wrote {output}")
     print("Review, then run: make validate && make reproducible && make build && make verify-routes")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
