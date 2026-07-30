@@ -88,7 +88,14 @@
         "https://cybersecurityfordemocracy.org/",
         "https://www.hrw.org/report/2023/12/21/metas-broken-promises/systemic-censorship-palestine-content-instagram-and"
       ],
-      "renderedStructureSha256": "748658aa8d364817e946a2e839c332aa611b5a39e7fbfc2a9718230debf54dcf"
+      "renderedStructureSha256": "748658aa8d364817e946a2e839c332aa611b5a39e7fbfc2a9718230debf54dcf",
+      "proseSegmentSha256": [
+        "288671f4893ac5889d79011802a147d3a2df80f572af3fb05238d4f4ce9a0d18",
+        "e21b71b67a2a6d3f834967f636fdf7e6fcd8ae62dc1c2e264aae2c6dd4841a4f",
+        "64d1ea6285815c6b2672fa0e8511741f36c499ac1be130dc8e312b6ab35b7d42",
+        "aafb334abf4a20d5c294e7d0a376f42c71ffe043acd9bb549ce4b7f5cd0d276c",
+        "416c915c7d7ab3282e3f9949f8374ba461658848cfca238430f45b25b78ab6ca"
+      ]
     },
     {
       "source": "content/posts/technology-companies-know-too-much-about-us.md",
@@ -110,7 +117,14 @@
         "https://www.pearson.com/en-us/subject-catalog/p/gift-of-fire-social-legal-and-ethical-issues-for-computing-technology/P200000003391",
         "https://www.pearson.com/en-us/subject-catalog/p/gift-of-fire-social-legal-and-ethical-issues-for-computing-technology/P200000003391"
       ],
-      "renderedStructureSha256": "98d34be84cee5851cb8ff0fc7ba850353a057865ae4f08b685b86b2cf21bc591"
+      "renderedStructureSha256": "98d34be84cee5851cb8ff0fc7ba850353a057865ae4f08b685b86b2cf21bc591",
+      "proseSegmentSha256": [
+        "9125a6b8db99b524975438250d55affaec4be30039f996677cb4802bf6f1ff7f",
+        "6b680c622c5a179962be455ff0c8a7e5fa40ebd4f5391ca20442a0c398aa2ae1",
+        "e2a477ae8e0af592dd4024fc302fc8a1658a68ce069911e823d44e5fbb18c698",
+        "3e19235c1ec5284c311ad4f8d4f504eceba1dfb24766acd61b6fefd915fc7c95",
+        "60fe505c9e244081dd55bdcb4830668087dfd8287fca1fff640117b02a0fa7e6"
+      ]
     },
     {
       "source": "content/posts/code-power-and-consequences.md",
@@ -149,7 +163,15 @@
         "https://www.congress.gov/bill/112th-congress/senate-bill/3642",
         "https://www.congress.gov/bill/114th-congress/senate-bill/1890"
       ],
-      "renderedStructureSha256": "bb2e524ecccfdf8a7b4ce3b90add2bbd9eba9f73f3dda71fcfb28d1e143cebd1"
+      "renderedStructureSha256": "bb2e524ecccfdf8a7b4ce3b90add2bbd9eba9f73f3dda71fcfb28d1e143cebd1",
+      "proseSegmentSha256": [
+        "73cf9aa27cece3a92414f743992a1b3bdc3e3522eebc0f9ae5b84be8b3d1ec72",
+        "594add8bc068112136b4b79de500ea694d75197f9fce3527c1dd02f4cd94d2d7",
+        "4aee3d1197d5fe58aec19d4f1b53f38ff26fc8f664d92058ba38f4dfc12a051b",
+        "918e294ebd312377785a2bb64bed60731fa07266d1ae6a220b4f699344317b6c",
+        "30f32cdba16c4a94afc6cf8836f0d34fe3764fb20544259c7ec82218d73ca641",
+        "09da62b0a888af790bb5f700a10c482c93dca6fb5992a65ef4d98fb1fe5f2d80"
+      ]
     },
     {
       "source": "content/posts/ethical-frameworks-in-development-of-technology.md",
@@ -168,7 +190,14 @@
         "https://conversationswithbillkristol.org/transcript/peter-thiel-transcript/",
         "https://eng.vt.edu/magazine/stories/fall-2023/ai.html"
       ],
-      "renderedStructureSha256": "9f9035cdc3b53c623d900c9bd1c234e712feb7461bb245903c3ec72eca700788"
+      "renderedStructureSha256": "9f9035cdc3b53c623d900c9bd1c234e712feb7461bb245903c3ec72eca700788",
+      "proseSegmentSha256": [
+        "682c41070a96615ed536ba0006a07382ce31829cb845b47a33e49bbc0b9fc9ed",
+        "8b79d778faf74f5791022ef3901839896359b347d027e28169fdbd0ab045f0b3",
+        "ac4c8f9d7fcf2307f1139f9bcbebd2ed244a24f4a1d5841cd6aa1450d786a0b9",
+        "dbcea66df3b274cd61fccd0f55159963606274494def6aa7997e920885f76648",
+        "7c56275a592d0282b7311f39822cc92b553a0c40ba9235b52eba67e6cdeed2cc"
+      ]
     }
   ],
   "renderedContract": {

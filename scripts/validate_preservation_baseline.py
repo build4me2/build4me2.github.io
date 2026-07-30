@@ -35,6 +35,25 @@ def normalized_text(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip()
 
 
+def prose_segments(body: str) -> list[str]:
+    """Return stable paragraph-sized units for actionable prose diagnostics."""
+    return [normalized_text(part) for part in re.split(r"\n\s*\n", body) if normalized_text(part)]
+
+
+def segment_digests(body: str) -> list[str]:
+    return [digest(segment) for segment in prose_segments(body)]
+
+
+def describe_segment_change(relative: str, actual: list[str], expected: list[str]) -> str:
+    common = min(len(actual), len(expected))
+    for index in range(common):
+        if actual[index] != expected[index]:
+            return f"essay prose segment {index + 1} changed without baseline review: {relative}"
+    return (
+        f"essay prose segment count changed from {len(expected)} to {len(actual)}: {relative}"
+    )
+
+
 def split_post(path: Path) -> tuple[dict[str, Any], str]:
     text = path.read_text(encoding="utf-8")
     match = re.fullmatch(r"\+\+\+\n(.*?)\n\+\+\+\n(?:\n)?(.*)", text, re.S)
@@ -132,6 +151,20 @@ def parse_html(path: Path) -> PageParser:
     return parser
 
 
+def hugo_diagnostic(output: str, destination: Path) -> str:
+    """Keep Hugo failures useful while removing machine-specific and volatile data."""
+    value = output.replace(str(destination), "<destination>").replace(str(ROOT), "<repository>")
+    lines: list[str] = []
+    for line in value.splitlines():
+        line = line.strip()
+        if not line or re.match(r"^(Start building sites|Total in) ", line):
+            continue
+        line = re.sub(r"\b\d+(?:\.\d+)?\s*(?:ms|milliseconds|seconds?)\b", "<duration>", line)
+        if line not in lines:
+            lines.append(line)
+    return "\n".join(lines) or "Hugo returned a non-zero status without a diagnostic"
+
+
 def fail(errors: list[str], message: str) -> None:
     errors.append(message)
 
@@ -153,12 +186,22 @@ def validate_sources(baseline: dict[str, Any], errors: list[str]) -> None:
     if actual_theme_commit != baseline["paperModCommit"]:
         fail(errors, f"PaperMod gitlink changed: {actual_theme_commit!r}")
 
-    config = tomllib.loads((ROOT / "hugo.toml").read_text(encoding="utf-8"))
+    try:
+        config = tomllib.loads((ROOT / "hugo.toml").read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        fail(errors, f"Hugo configuration cannot be read: {type(exc).__name__}")
+        config = {}
     for dotted, expected in baseline["hugoConfiguration"].items():
         value: Any = config
+        missing = False
         for component in dotted.split("."):
+            if not isinstance(value, dict) or component not in value:
+                missing = True
+                break
             value = value[component]
-        if value != expected:
+        if missing:
+            fail(errors, f"Hugo setting {dotted} is missing; expected {expected!r}")
+        elif value != expected:
             fail(errors, f"Hugo setting {dotted} is {value!r}; expected {expected!r}")
 
     for article in baseline["articles"]:
@@ -166,18 +209,27 @@ def validate_sources(baseline: dict[str, Any], errors: list[str]) -> None:
         try:
             front_matter, body = split_post(ROOT / relative)
         except (OSError, ValueError, tomllib.TOMLDecodeError) as exc:
-            fail(errors, str(exc))
+            fail(errors, f"{relative}: cannot read or parse post ({type(exc).__name__})")
             continue
         if json_front_matter(front_matter) != article["frontMatter"]:
             fail(errors, f"front matter changed: {relative}")
         if digest(body) != article["proseSha256"]:
-            fail(errors, f"essay prose/argument changed without baseline review: {relative}")
+            actual_segments = segment_digests(body)
+            expected_segments = article.get("proseSegmentSha256", [])
+            if expected_segments:
+                fail(errors, describe_segment_change(relative, actual_segments, expected_segments))
+            else:
+                fail(errors, f"essay prose/argument changed without baseline review: {relative}")
         if source_links(body) != article["citationDestinations"]:
             fail(errors, f"citation destinations or their order changed: {relative}")
 
 
 def validate_rendered(baseline: dict[str, Any], destination: Path, errors: list[str]) -> None:
-    home = parse_html(destination / "index.html")
+    home_path = destination / "index.html"
+    if not home_path.is_file():
+        fail(errors, "home route / did not render index.html")
+        return
+    home = parse_html(home_path)
     established_routes = {item["route"] for item in baseline["homeListing"]}
     actual_listing = [
         {key: normalized_text(value) for key, value in item.items()}
@@ -192,7 +244,12 @@ def validate_rendered(baseline: dict[str, Any], destination: Path, errors: list[
             fail(errors, f"home page missing rendered structure marker {marker}")
 
     for article in baseline["articles"]:
-        page = parse_html(destination / article["route"].strip("/") / "index.html")
+        route = article["route"]
+        page_path = destination / route.strip("/") / "index.html"
+        if not page_path.is_file():
+            fail(errors, f"article route {route} did not render index.html")
+            continue
+        page = parse_html(page_path)
         if normalized_text("".join(page.title_text)) != article["frontMatter"]["title"]:
             fail(errors, f"rendered title changed at {article['route']}")
         if digest(normalized_text("".join(page.content_text))) != article["renderedProseSha256"]:
@@ -215,13 +272,23 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source-only", action="store_true", help="skip the Hugo render checks")
     args = parser.parse_args()
-    baseline = json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
+    try:
+        baseline = json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"Preservation baseline cannot be read: {type(exc).__name__}", file=sys.stderr)
+        return 1
     errors: list[str] = []
     validate_sources(baseline, errors)
 
     if not args.source_only:
         with tempfile.TemporaryDirectory(prefix="hugo-preservation-") as temp:
-            command = ["hugo", "--cleanDestinationDir", "--destination", temp]
+            build_root = Path(temp)
+            destination = build_root / "site"
+            command = [
+                "hugo", "--cleanDestinationDir", "--noBuildLock",
+                "--cacheDir", str(build_root / "cache"),
+                "--destination", str(destination),
+            ]
             try:
                 result = subprocess.run(command, cwd=ROOT, text=True, capture_output=True, timeout=120)
             except FileNotFoundError:
@@ -230,11 +297,13 @@ def main() -> int:
                 fail(errors, "Hugo baseline build timed out after 120 seconds")
             else:
                 if result.returncode:
-                    fail(errors, "Hugo build failed:\n" + (result.stderr or result.stdout).strip())
+                    fail(errors, "Hugo build failed:\n" + hugo_diagnostic(result.stderr or result.stdout, build_root))
                 else:
-                    validate_rendered(baseline, Path(temp), errors)
+                    validate_rendered(baseline, destination, errors)
 
     if errors:
+        # Stable output even if future checks discover findings via unordered inputs.
+        errors = sorted(set(errors))
         print("Preservation baseline FAILED:", file=sys.stderr)
         for error in errors:
             print(f"- {error}", file=sys.stderr)

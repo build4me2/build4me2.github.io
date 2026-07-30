@@ -5,16 +5,17 @@ Run the offline preservation check from the repository root:
 ```sh
 git submodule update --init --recursive
 python3 scripts/validate_preservation_baseline.py
+python3 -m unittest discover -s tests -p 'test_*.py' -v
 ```
 
-Use `--source-only` only when Hugo is unavailable. The full check builds into a temporary directory and leaves no `public/` tree.
+Use `--source-only` only when Hugo is unavailable. The full check builds with an isolated cache in a temporary directory and leaves no `public/` tree. The mutation tests are also offline: they use temporary fixtures to prove that route, prose-segment, configuration, template, and style changes produce focused failures.
 
 ## What is protected
 
 `tests/baselines/preservation.json` is a reviewable inventory of:
 
 - the four established source files, route slugs, titles, dates, and complete front matter;
-- hashes of each exact essay body and its normalized rendered prose;
+- hashes of each exact essay body, each normalized prose segment, and its normalized rendered prose;
 - every citation destination, including repeats and order, in both source and output;
 - the established articles' presence and relative order on the home page;
 - canonical rendered element structure for the home and article pages;
