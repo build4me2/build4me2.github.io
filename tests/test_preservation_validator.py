@@ -451,6 +451,44 @@ class SourcePreservationTests(unittest.TestCase):
 
 
 class RenderedPreservationTests(unittest.TestCase):
+    def test_real_render_uses_the_complete_deployment_build_contract(self) -> None:
+        """Command capture prevents preservation and deployment flags from drifting."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            destination = root / "site"
+            cache = root / "isolated-cache"
+            captured: dict[str, object] = {}
+
+            def fake_run(command, **kwargs):
+                captured["command"] = command
+                captured["environment"] = kwargs["env"]
+                self.assertTrue(cache.is_dir())
+                return subprocess.CompletedProcess(command, 0, "", "")
+
+            with mock.patch.object(
+                validator.deterministic_build.subprocess, "run", side_effect=fake_run
+            ):
+                validator.build_rendered_site(destination, cache)
+
+            self.assertEqual(captured["command"], [
+                "hugo",
+                "--cleanDestinationDir",
+                "--buildFuture",
+                "--noBuildLock",
+                "--ignoreCache",
+                "--minify",
+                "--environment", "production",
+                "--clock", validator.deterministic_build.BUILD_CLOCK,
+                "--cacheDir", str(cache),
+                "--destination", str(destination),
+            ])
+            environment = captured["environment"]
+            assert isinstance(environment, dict)
+            self.assertEqual(environment["SOURCE_DATE_EPOCH"], "1767225600")
+            self.assertEqual(environment["TZ"], "UTC")
+            self.assertEqual(environment["LANG"], "C.UTF-8")
+            self.assertEqual(environment["LC_ALL"], "C.UTF-8")
+
     @staticmethod
     def _write_smoke_fixture(destination: Path) -> dict[str, object]:
         route = "/established-route/"

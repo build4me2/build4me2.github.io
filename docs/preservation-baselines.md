@@ -69,6 +69,12 @@ Extended-capability mismatch. Initialize the pinned theme first. The validator c
 
 The validator checks the baseline schema before reading any fixture values. Missing fields, incorrect JSON types, malformed hashes, and an incorrect established-entry count fail with sorted JSON-path diagnostics and no traceback. It then fails with a focused diagnostic when any protected value changes. Rewriting the editable baseline alongside a change does not bypass preservation: article front matter and derived routes/listing are reconstructed from `capturedFrom`, while Hugo configuration, presentation bytes and inventories, and the PaperMod gitlink are compared directly with that captured Git tree. It does not access the network and uses only Python's standard library, Git, and the locally installed Hugo executable.
 
+The real preservation render calls the same `scripts/build_site.py` build function
+used for deployment. Consequently its fixed clock, `--buildFuture`, production
+environment, fresh isolated cache, `--ignoreCache`, `SOURCE_DATE_EPOCH`, UTC
+timezone, and fixed locale cannot drift into a second validator-specific command.
+Command-capture tests enforce that shared contract.
+
 ## Change policy
 
 Essay editing and reconciliation are deliberately different:
