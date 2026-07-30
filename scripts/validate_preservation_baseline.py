@@ -23,6 +23,8 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 BASELINE_PATH = ROOT / "tests" / "baselines" / "preservation.json"
+REVIEW_RECORDS_PATH = ROOT / "tests" / "baselines" / "review-records.json"
+CAPTURED_FROM_COMMIT = "8daa5220b19ec7e529d4354c77707bb882c9bce3"
 PRESENTATION_ROOTS = {
     "extendedCss": Path("assets/css/extended"),
     "layouts": Path("layouts"),
@@ -59,16 +61,28 @@ def describe_segment_change(relative: str, actual: list[str], expected: list[str
     )
 
 
-def split_post(path: Path) -> tuple[dict[str, Any], str]:
-    text = path.read_text(encoding="utf-8")
+def split_post_text(text: str, label: str) -> tuple[dict[str, Any], str]:
     match = re.fullmatch(r"\+\+\+\n(.*?)\n\+\+\+\n(?:\n)?(.*)", text, re.S)
     if not match:
-        raise ValueError(f"{path.relative_to(ROOT)}: expected TOML front matter")
+        raise ValueError(f"{label}: expected TOML front matter")
     return tomllib.loads(match.group(1)), match.group(2).rstrip("\n")
+
+
+def split_post(path: Path) -> tuple[dict[str, Any], str]:
+    try:
+        label = path.relative_to(ROOT).as_posix()
+    except ValueError:
+        label = path.as_posix()
+    return split_post_text(path.read_text(encoding="utf-8"), label)
 
 
 def source_links(body: str) -> list[str]:
     return re.findall(r"<a\s+[^>]*href=[\"']([^\"']+)[\"']", body, re.I)
+
+
+def body_without_link_destinations(body: str) -> str:
+    """Retain exact essay wording/markup while ignoring only href values."""
+    return re.sub(r"(?i)(<a\s+[^>]*href=)([\"'])[^\"']*\2", r"\1\2<CITATION>\2", body)
 
 
 def json_front_matter(values: dict[str, Any]) -> dict[str, Any]:
@@ -285,7 +299,9 @@ def validate_baseline_schema(baseline: Any) -> list[str]:
     schema = string_field(root, "$", "schema")
     if schema is not None and schema != "hugo-preservation-baseline/v1":
         fail(errors, f"$.schema: unsupported value {schema!r}; expected 'hugo-preservation-baseline/v1'")
-    string_field(root, "$", "capturedFrom")
+    captured_from = string_field(root, "$", "capturedFrom")
+    if captured_from is not None and captured_from != CAPTURED_FROM_COMMIT:
+        fail(errors, f"$.capturedFrom: expected pinned source commit {CAPTURED_FROM_COMMIT!r}")
     policy = field(root, "$", "policy", dict)
     if isinstance(policy, dict):
         for name in ("purpose", "approvedReconciliation", "prohibitedChanges"):
@@ -379,6 +395,108 @@ def validate_baseline_schema(baseline: Any) -> list[str]:
             fail(errors, "$.renderedContract.homeStructureSha256: expected a 64-character lowercase hexadecimal SHA-256")
 
     return sorted(set(errors))
+
+
+def validate_review_records_schema(document: Any) -> list[str]:
+    """Validate the audit records used to authorize citation reconciliation."""
+    errors: list[str] = []
+    if not isinstance(document, dict):
+        return [f"$: expected object, got {json_type(document)}"]
+    if document.get("schema") != "preservation-review-records/v1":
+        fail(errors, "$.schema: expected 'preservation-review-records/v1'")
+    records = document.get("records")
+    if not isinstance(records, list):
+        fail(errors, f"$.records: expected array, got {json_type(records)}")
+        return sorted(errors)
+    ids: set[str] = set()
+    for index, record in enumerate(records):
+        path = f"$.records[{index}]"
+        if not isinstance(record, dict):
+            fail(errors, f"{path}: expected object, got {json_type(record)}")
+            continue
+        record_id = record.get("id")
+        if not isinstance(record_id, str) or not record_id:
+            fail(errors, f"{path}.id: expected non-empty string")
+        elif record_id in ids:
+            fail(errors, f"{path}.id: duplicate record id {record_id!r}")
+        else:
+            ids.add(record_id)
+        kind = record.get("kind")
+        if kind == "baseline-capture":
+            continue
+        if kind != "citation-reconciliation":
+            fail(errors, f"{path}.kind: unsupported review kind {kind!r}")
+            continue
+        for name in ("article", "before", "after", "reason"):
+            if not isinstance(record.get(name), str) or not record[name]:
+                fail(errors, f"{path}.{name}: expected non-empty string")
+        citation_index = record.get("citationIndex")
+        if not isinstance(citation_index, int) or isinstance(citation_index, bool) or citation_index < 1:
+            fail(errors, f"{path}.citationIndex: expected positive integer")
+        evidence = record.get("verificationEvidence")
+        if not isinstance(evidence, list) or not evidence or not all(
+            isinstance(item, str) and item for item in evidence
+        ):
+            fail(errors, f"{path}.verificationEvidence: expected non-empty array of non-empty strings")
+        if record.get("proseArgumentRoutePresentationUnchanged") is not True:
+            fail(errors, f"{path}.proseArgumentRoutePresentationUnchanged: expected true")
+    return sorted(set(errors))
+
+
+def validate_article_history(
+    article: dict[str, Any], original_body: str, records: list[dict[str, Any]], errors: list[str]
+) -> None:
+    """Anchor prose and citation history to the inherited source commit."""
+    relative = article["source"]
+    _, current_body = split_post(ROOT / relative)
+    if body_without_link_destinations(current_body) != body_without_link_destinations(original_body):
+        fail(errors, f"essay prose/argument differs from captured source commit: {relative}")
+
+    original_links = source_links(original_body)
+    current_links = source_links(current_body)
+    applicable = [
+        record for record in records
+        if record.get("kind") == "citation-reconciliation" and record.get("article") == relative
+    ]
+    consumed: set[str] = set()
+    for index in range(max(len(original_links), len(current_links))):
+        before = original_links[index] if index < len(original_links) else None
+        after = current_links[index] if index < len(current_links) else None
+        if before == after:
+            continue
+        matches = [
+            record for record in applicable
+            if record.get("citationIndex") == index + 1
+            and record.get("before") == before and record.get("after") == after
+        ]
+        if len(matches) != 1:
+            fail(errors, f"citation destination {index + 1} changed without one exact review record: {relative}")
+        else:
+            consumed.add(matches[0]["id"])
+    for record in applicable:
+        if record.get("id") not in consumed:
+            fail(errors, f"stale or non-matching citation review record {record.get('id')!r}: {relative}")
+
+
+def validate_preservation_history(
+    baseline: dict[str, Any], review_document: dict[str, Any], errors: list[str]
+) -> None:
+    captured = baseline["capturedFrom"]
+    records = review_document["records"]
+    for article in baseline["articles"]:
+        relative = article["source"]
+        result = subprocess.run(
+            ["git", "show", f"{captured}:{relative}"], cwd=ROOT,
+            text=True, capture_output=True,
+        )
+        if result.returncode:
+            fail(errors, f"cannot read captured source {relative} at commit {captured!r}")
+            continue
+        try:
+            _, original_body = split_post_text(result.stdout, f"{captured}:{relative}")
+            validate_article_history(article, original_body, records, errors)
+        except (OSError, ValueError, tomllib.TOMLDecodeError) as exc:
+            fail(errors, f"cannot compare captured source {relative} ({type(exc).__name__})")
 
 
 def validate_presentation_file_sets(baseline: dict[str, Any], errors: list[str]) -> None:
@@ -563,12 +681,20 @@ def main() -> int:
     except (OSError, json.JSONDecodeError) as exc:
         print(f"Preservation baseline cannot be read: {type(exc).__name__}", file=sys.stderr)
         return 1
+    try:
+        review_document = json.loads(REVIEW_RECORDS_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"Preservation review records cannot be read: {type(exc).__name__}", file=sys.stderr)
+        return 1
     schema_errors = validate_baseline_schema(baseline)
-    if schema_errors:
-        print("Preservation baseline schema is invalid:", file=sys.stderr)
-        for error in schema_errors:
+    review_schema_errors = validate_review_records_schema(review_document)
+    if schema_errors or review_schema_errors:
+        heading = "Preservation baseline schema is invalid:" if schema_errors else "Preservation review-record schema is invalid:"
+        print(heading, file=sys.stderr)
+        for error in schema_errors or review_schema_errors:
             print(f"- {error}", file=sys.stderr)
-        print("Fix tests/baselines/preservation.json before running preservation checks.", file=sys.stderr)
+        target = "tests/baselines/preservation.json" if schema_errors else "tests/baselines/review-records.json"
+        print(f"Fix {target} before running preservation checks.", file=sys.stderr)
         return 1
 
     errors: list[str] = []
@@ -576,6 +702,7 @@ def main() -> int:
         baseline["hugoVersion"], baseline["hugoExtended"], errors
     )
     theme_ready = validate_sources(baseline, errors)
+    validate_preservation_history(baseline, review_document, errors)
 
     # Do not let Hugo's template lookup obscure an absent or stale submodule.
     # Source-only diagnostics still verify the worktree because it is a pinned

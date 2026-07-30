@@ -20,6 +20,8 @@ The full `python3 scripts/validate_preservation_baseline.py` invocation is the r
 - the four established source files, route slugs, titles, dates, and complete front matter;
 - hashes of each exact essay body, each normalized prose segment, and its normalized rendered prose;
 - every citation destination, including repeats and order, in both source and output;
+- exact essay wording anchored to each article at `capturedFrom`, so changing both a post and its editable hash cannot hide an argument change;
+- citation changes relative to `capturedFrom`, each of which must consume one exact, evidence-backed review record;
 - the established articles' presence and relative order on the home page;
 - canonical rendered element structure for the home and article pages;
 - complete, sorted file inventories and hashes for local layouts and extended CSS, including header, footer, listing, citation, and theme-toggle overrides (new override files are rejected);
@@ -34,12 +36,13 @@ Essay editing and reconciliation are deliberately different:
 - **Prohibited:** changing an essay's argument or wording, established route identity, typography, layout, colors, post-list design, header/footer behavior, or current PaperMod light/dark behavior.
 - **Potentially approvable reconciliation:** correcting front matter or a citation destination while preserving the argument and design. Approval is not implied merely by regenerating a hash.
 
-Before changing the baseline for a reconciliation, add an entry to `tests/baselines/review-records.json` containing:
+Before changing a citation destination, add a `citation-reconciliation` entry to `tests/baselines/review-records.json` containing:
 
-1. a unique record ID and `kind` (`front-matter-reconciliation` or `citation-reconciliation`);
-2. the exact article and field/link before and after;
-3. why the old value was defective;
-4. verification evidence for the corrected value;
-5. confirmation that prose, argument, route, and presentation remain unchanged.
+1. a unique non-empty `id`;
+2. `article`, the repository-relative post path;
+3. `citationIndex`, the destination's one-based position (repeats therefore remain unambiguous);
+4. exact non-empty `before` and `after` destinations;
+5. a non-empty `reason` and `verificationEvidence` array;
+6. `proseArgumentRoutePresentationUnchanged: true`.
 
-Then update only the affected explicit value and digest in `preservation.json`, run the full validator, and include both files in review. Never update baseline hashes to make an unexplained content or design change pass. The initial record identifies the inherited commit used for this inventory and approves no changes.
+Then update only the affected destination and digests in `preservation.json`, run the full validator, and include the post, review record, and baseline in review. Each changed destination must consume exactly one matching record; stale, duplicate, or non-matching records fail validation. Prose is compared directly with the inherited `capturedFrom` source after only hyperlink destinations are masked, so rebaselining hashes cannot authorize changed wording or arguments. Never update baseline hashes to make an unexplained content or design change pass. The initial record identifies the inherited commit used for this inventory and approves no changes.

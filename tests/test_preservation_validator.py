@@ -103,6 +103,73 @@ class SourcePreservationTests(unittest.TestCase):
             self.assertEqual(inventory, sorted(set(inventory)))
             self.assertEqual(actual, inventory)
 
+    def test_captured_history_rejects_rebaselined_prose_and_unreviewed_links(self) -> None:
+        baseline = json.loads((ROOT / "tests/baselines/preservation.json").read_text(encoding="utf-8"))
+        baseline["capturedFrom"] = "a" * 40
+        self.assertIn(
+            f"$.capturedFrom: expected pinned source commit {validator.CAPTURED_FROM_COMMIT!r}",
+            validator.validate_baseline_schema(baseline),
+        )
+
+        original = (
+            "Established argument with "
+            '<a href="https://old.example/source">verified evidence</a>.'
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            post = root / "content/posts/example.md"
+            post.parent.mkdir(parents=True)
+            prefix = '+++\ntitle = "Example"\ndate = 2026-01-01\ndraft = false\nslug = "example"\n+++\n\n'
+            article = {"source": "content/posts/example.md"}
+
+            post.write_text(prefix + original + "\n", encoding="utf-8")
+            with mock.patch.object(validator, "ROOT", root):
+                errors: list[str] = []
+                validator.validate_article_history(article, original, [], errors)
+            self.assertEqual(errors, [])
+
+            post.write_text(prefix + original.replace("Established argument", "Altered argument") + "\n", encoding="utf-8")
+            with mock.patch.object(validator, "ROOT", root):
+                errors = []
+                validator.validate_article_history(article, original, [], errors)
+            self.assertEqual(errors, [
+                "essay prose/argument differs from captured source commit: content/posts/example.md"
+            ])
+
+            changed = original.replace("https://old.example/source", "https://verified.example/source")
+            post.write_text(prefix + changed + "\n", encoding="utf-8")
+            with mock.patch.object(validator, "ROOT", root):
+                errors = []
+                validator.validate_article_history(article, original, [], errors)
+            self.assertEqual(errors, [
+                "citation destination 1 changed without one exact review record: content/posts/example.md"
+            ])
+
+            record = {
+                "id": "example-citation-fix",
+                "kind": "citation-reconciliation",
+                "article": "content/posts/example.md",
+                "citationIndex": 1,
+                "before": "https://old.example/source",
+                "after": "https://verified.example/source",
+                "reason": "The inherited destination was defective.",
+                "verificationEvidence": ["Publisher canonical record checked."],
+                "proseArgumentRoutePresentationUnchanged": True,
+            }
+            self.assertEqual(validator.validate_review_records_schema({
+                "schema": "preservation-review-records/v1", "records": [record]
+            }), [])
+            with mock.patch.object(validator, "ROOT", root):
+                errors = []
+                validator.validate_article_history(article, original, [record], errors)
+            self.assertEqual(errors, [])
+
+            record["after"] = "https://wrong.example/source"
+            with mock.patch.object(validator, "ROOT", root):
+                errors = []
+                validator.validate_article_history(article, original, [record], errors)
+            self.assertIn("stale or non-matching citation review record 'example-citation-fix'", errors[1])
+
     def test_mutations_name_configuration_assets_and_prose_segment(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

@@ -1,6 +1,6 @@
 {
   "schema": "hugo-preservation-baseline/v1",
-  "capturedFrom": "8daa522",
+  "capturedFrom": "8daa5220b19ec7e529d4354c77707bb882c9bce3",
   "policy": {
     "purpose": "Preserve the four established essays, routes, verified citation destinations, and visual behavior.",
     "approvedReconciliation": "Only citation destination or front-matter corrections documented in tests/baselines/review-records.json may update this baseline.",
