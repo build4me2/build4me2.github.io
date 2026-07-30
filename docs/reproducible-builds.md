@@ -26,7 +26,10 @@ explained in [preservation-baselines.md](preservation-baselines.md).
   clean builds with separate empty caches and compares a path-sorted SHA-256
   manifest. It fails with sorted per-path diagnostics if a path or any generated
   byte differs.
-- `make validate` runs the complete offline test and preservation suite.
+- `make validate` runs the complete offline test and preservation suite through
+  `scripts/run_validation.py`. The runner globally sorts test IDs and normalizes
+  checkout paths, object addresses, line endings, and unittest elapsed time so
+  repeated successful or failing runs produce the same actionable report.
 
 GitHub Pages uses the same build script after validation rather than maintaining
 a second set of Hugo flags.
