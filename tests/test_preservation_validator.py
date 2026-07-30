@@ -552,6 +552,19 @@ class CliTests(unittest.TestCase):
 
     def test_full_acceptance_cli_uses_real_pinned_build_dependencies(self) -> None:
         """The scoped suite must exercise rendering, not only mocked orchestration."""
+        # Test discovery is itself a documented acceptance entrypoint, so make
+        # its real integration check reproducible in an uninitialized worktree.
+        # The setup command verifies and materializes only the committed offline
+        # snapshot; it performs no clone, fetch, or other network operation.
+        setup = subprocess.run(
+            ["python3", "scripts/setup_pinned_theme.py"],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            timeout=60,
+        )
+        self.assertEqual(setup.returncode, 0, setup.stderr)
+
         result = subprocess.run(
             ["python3", "scripts/validate_preservation_baseline.py"],
             cwd=ROOT,
