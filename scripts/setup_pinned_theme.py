@@ -26,7 +26,9 @@ class SetupError(RuntimeError):
     """An actionable, stable setup failure."""
 
 
-def run_git(arguments: list[str], *, cwd: Path, input_bytes: bytes | None = None) -> str:
+def run_git(
+    arguments: list[str], *, cwd: Path, input_bytes: bytes | None = None, strip: bool = True
+) -> str:
     try:
         result = subprocess.run(
             ["git", *arguments], cwd=cwd, input=input_bytes, capture_output=True,
@@ -42,7 +44,8 @@ def run_git(arguments: list[str], *, cwd: Path, input_bytes: bytes | None = None
         detail = diagnostic[-1] if diagnostic else f"exit status {result.returncode}"
         raise SetupError(f"Git could not materialize pinned PaperMod: {detail}")
     output = result.stdout
-    return (output if isinstance(output, str) else output.decode("ascii")).strip()
+    decoded = output if isinstance(output, str) else output.decode("ascii")
+    return decoded.strip() if strip else decoded
 
 
 def sha256(path: Path) -> str:
@@ -90,10 +93,42 @@ def checked_out_commit(destination: Path) -> str | None:
     return result.stdout.strip() if result.returncode == 0 else None
 
 
+def worktree_changes(destination: Path) -> list[tuple[str, str]]:
+    """Return every tracked or untracked deviation, sorted by repository path."""
+    changed = run_git(
+        ["diff", "--name-status", "--no-renames", "-z", "HEAD", "--"],
+        cwd=destination,
+        strip=False,
+    ).split("\0")
+    findings: set[tuple[str, str]] = set()
+    # --name-status -z emits alternating status/path fields. Disabling rename
+    # detection keeps this format unambiguous and reports both sides of a move.
+    for offset in range(0, len(changed) - 1, 2):
+        status, path = changed[offset], changed[offset + 1]
+        if status and path:
+            findings.add((path, "deleted" if status == "D" else "modified"))
+
+    # Deliberately do not apply ignore rules: an ignored file is still an
+    # untracked addition to the supposedly exact theme worktree.
+    for path in run_git(
+        ["ls-files", "--others", "-z"], cwd=destination, strip=False
+    ).split("\0"):
+        if path:
+            findings.add((path, "untracked"))
+    return sorted(findings)
+
+
 def materialize(destination: Path) -> bool:
     """Create the exact checkout; return False when it was already ready."""
     actual = checked_out_commit(destination)
     if actual == PINNED_COMMIT:
+        changes = worktree_changes(destination)
+        if changes:
+            details = "\n".join(f"- {state}: {path}" for path, state in changes)
+            raise SetupError(
+                "PaperMod worktree differs from the pinned commit:\n" + details
+                + "\nRestore or remove these paths before rerunning setup"
+            )
         return False
     if destination.exists() and any(destination.iterdir()):
         raise SetupError(

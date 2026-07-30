@@ -640,8 +640,33 @@ def validate_presentation_file_sets(baseline: dict[str, Any], errors: list[str])
             fail(errors, f"unexpected presentation override: {relative}")
 
 
+def theme_worktree_changes(theme: Path) -> list[tuple[str, str]] | None:
+    """Return path-sorted deviations from HEAD, including ignored untracked files."""
+    commands = [
+        ["git", "-C", str(theme), "diff", "--name-status", "--no-renames", "-z", "HEAD", "--"],
+        ["git", "-C", str(theme), "ls-files", "--others", "-z"],
+    ]
+    results = [
+        subprocess.run(command, cwd=ROOT, text=True, capture_output=True)
+        for command in commands
+    ]
+    if any(result.returncode for result in results):
+        return None
+
+    fields = results[0].stdout.split("\0")
+    findings: set[tuple[str, str]] = set()
+    for offset in range(0, len(fields) - 1, 2):
+        status, path = fields[offset], fields[offset + 1]
+        if status and path:
+            findings.add((path, "deleted" if status == "D" else "modified"))
+    for path in results[1].stdout.split("\0"):
+        if path:
+            findings.add((path, "untracked"))
+    return sorted(findings)
+
+
 def validate_theme_checkout(expected_commit: str, errors: list[str]) -> bool:
-    """Verify both the pinned gitlink and the initialized submodule worktree."""
+    """Verify the gitlink and the complete pinned index/worktree state."""
     gitlink = subprocess.run(
         ["git", "ls-files", "--stage", "themes/PaperMod"], cwd=ROOT,
         text=True, capture_output=True,
@@ -677,7 +702,18 @@ def validate_theme_checkout(expected_commit: str, errors: list[str]) -> bool:
             f"{expected_commit}; run 'python3 scripts/setup_pinned_theme.py'",
         )
         return False
-    return pinned_commit == expected_commit
+
+    changes = theme_worktree_changes(theme)
+    if changes is None:
+        fail(errors, "PaperMod worktree state could not be inspected with Git")
+        return False
+    for path, state in changes:
+        fail(
+            errors,
+            f"PaperMod worktree differs from pinned commit ({state}): {path}; "
+            "restore or remove the path, then run 'python3 scripts/setup_pinned_theme.py'",
+        )
+    return pinned_commit == expected_commit and not changes
 
 
 def validate_sources(baseline: dict[str, Any], errors: list[str]) -> bool:

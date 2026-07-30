@@ -12,6 +12,11 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 `setup_pinned_theme.py` verifies and expands the committed PaperMod snapshot,
 reconstructs its exact `154d006e0182dfc7da38008323976b02e6bfab4a` Git checkout,
 and performs no clone, fetch, or other network operation. It is safe to rerun.
+An existing checkout is accepted only when its HEAD, complete tracked index/worktree,
+and all untracked files exactly match that commit. Modified, deleted, and untracked
+paths (including ignored files) are rejected with path-sorted diagnostics rather
+than silently preserving a local theme customization; restore or remove the named
+paths and rerun setup.
 This makes acceptance work in a fresh validation worktree even when submodule
 network access is disabled. A normal recursive checkout remains supported for
 contributors with network access; the offline setup command is the deterministic
@@ -19,8 +24,10 @@ validation path.
 
 The scoped suite includes a real invocation of the full preservation validator,
 so success proves that the checked-out PaperMod commit and local Hugo binary can
-render non-empty home and article responses. It does not replace build inputs
-with mocks for that acceptance test. The remaining mutation tests use temporary
+render non-empty home and article responses. The validator independently applies
+the same complete PaperMod worktree check before rendering, so a theme CSS or
+variable mutation cannot pass merely because the submodule HEAD remains pinned.
+It does not replace build inputs with mocks for that acceptance test. The remaining mutation tests use temporary
 fixtures and do not access the network. To run the same integration acceptance
 directly, use:
 

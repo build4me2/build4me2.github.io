@@ -18,6 +18,12 @@ SPEC = importlib.util.spec_from_file_location(
 assert SPEC and SPEC.loader
 validator = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(validator)
+SETUP_SPEC = importlib.util.spec_from_file_location(
+    "pinned_theme_setup_for_validator", ROOT / "scripts" / "setup_pinned_theme.py"
+)
+assert SETUP_SPEC and SETUP_SPEC.loader
+setup = importlib.util.module_from_spec(SETUP_SPEC)
+SETUP_SPEC.loader.exec_module(setup)
 
 
 class SourcePreservationTests(unittest.TestCase):
@@ -83,6 +89,40 @@ class SourcePreservationTests(unittest.TestCase):
                 f"PaperMod worktree is at {'b' * 40!r}; expected pinned commit {expected}; "
                 "run 'python3 scripts/setup_pinned_theme.py'"
             ])
+
+    def test_full_preflight_rejects_css_mutation_at_unchanged_theme_head(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            theme = root / "themes/PaperMod"
+            subprocess.run(["git", "init", "--quiet", str(root)], check=True)
+            setup.materialize(theme)
+            subprocess.run(
+                [
+                    "git", "-C", str(root), "update-index", "--add", "--cacheinfo",
+                    f"160000,{setup.PINNED_COMMIT},themes/PaperMod",
+                ],
+                check=True,
+            )
+            css = theme / "assets/css/core/theme-vars.css"
+            css.write_text(
+                css.read_text(encoding="utf-8") + "\n:root { --theme: red; }\n",
+                encoding="utf-8",
+            )
+
+            errors: list[str] = []
+            with mock.patch.object(validator, "ROOT", root):
+                self.assertFalse(validator.validate_theme_checkout(setup.PINNED_COMMIT, errors))
+
+            self.assertEqual(errors, [
+                "PaperMod worktree differs from pinned commit (modified): "
+                "assets/css/core/theme-vars.css; restore or remove the path, then run "
+                "'python3 scripts/setup_pinned_theme.py'"
+            ])
+            head = subprocess.run(
+                ["git", "-C", str(theme), "rev-parse", "HEAD"],
+                text=True, capture_output=True, check=True,
+            ).stdout.strip()
+            self.assertEqual(head, setup.PINNED_COMMIT)
 
     def test_committed_sources_match_paragraph_inventory(self) -> None:
         baseline = json.loads((ROOT / "tests/baselines/preservation.json").read_text(encoding="utf-8"))
