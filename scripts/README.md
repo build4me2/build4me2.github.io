@@ -21,8 +21,13 @@ diagnostics, return nonzero, and do not create an output file. After all
 extraction and citation checks pass, the complete post is written to a hidden
 temporary file in the destination directory, flushed and verified byte-for-byte,
 then atomically installed without replacement. Input bytes come from the regular
-file descriptor opened during validation (PDF tools share one private validated
-snapshot), so replacing the input pathname cannot change extraction. Output
+file descriptor opened during validation. For PDFs, the captured bytes are copied
+to a temporary descriptor whose pathname is immediately unlinked; every Poppler
+process inherits that same descriptor and opens it through `/proc/self/fd`, so no
+mutable snapshot name exists and replacing the input pathname cannot change any
+extraction pass. The snapshot is closed before publication. A lifecycle failure
+uses `ERROR[snapshot_cleanup]` and blocks publication, while cleanup can never
+replace an earlier extraction diagnostic. Output
 parents are opened component-by-component without following links and retained
 through installation; staging, verification, linking, and cleanup are all
 performed relative to that bound directory descriptor. Every failure attempts

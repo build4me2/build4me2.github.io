@@ -71,6 +71,26 @@ class InputValidationTests(unittest.TestCase):
         large.write_bytes(b"1234")
         self.assert_category("input_too_large", lambda: converter.validate_input(large, max_bytes=3))
 
+    def test_pdf_snapshot_is_unlinked_and_passed_by_descriptor(self) -> None:
+        source = self.root / "paper.pdf"
+        original = b"%PDF-1.7\nvalidated bytes\n"
+        source.write_bytes(original)
+        snapshot = converter.validate_input(source)
+        try:
+            descriptor_path = snapshot.pdf_path()
+            self.assertTrue(str(descriptor_path).startswith("/proc/self/fd/"))
+            self.assertIn("(deleted)", converter.os.readlink(descriptor_path))
+            source.write_bytes(b"%PDF-1.7\nreplacement\n")
+            with mock.patch.object(converter.shutil, "which", return_value="/bin/cat"):
+                self.assertEqual(
+                    original,
+                    converter._run_pdf_tool(
+                        "cat", [str(descriptor_path)], pass_fds=snapshot.pdf_pass_fds()
+                    ),
+                )
+        finally:
+            self.assertIsNone(snapshot.close())
+
 
 class PdfExtractionFailureTests(unittest.TestCase):
     def assert_category(self, category: str, action) -> None:
@@ -114,6 +134,34 @@ class PdfExtractionFailureTests(unittest.TestCase):
             "missing_annotations", lambda: converter.extract_pdf_links(Path("paper.pdf"))
         )
 
+    def test_all_poppler_passes_share_the_same_inherited_descriptor(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / "paper.pdf"
+            source.write_bytes(b"%PDF-1.7\nfixture\n")
+            snapshot = converter.validate_input(source)
+            try:
+                with mock.patch.object(converter, "_run_pdf_tool") as tool:
+                    tool.side_effect = [
+                        b"Pages: 1\n",
+                        b"Twenty visible characters in this page.\x0c",
+                        b"",
+                        b"<html><body></body></html>",
+                    ]
+                    converter.read_input(snapshot)
+                    converter.extract_pdf_links(snapshot)
+
+                descriptor_paths = {
+                    argument
+                    for call in tool.call_args_list
+                    for argument in call.args[1]
+                    if argument.startswith("/proc/self/fd/")
+                }
+                inherited = {call.kwargs["pass_fds"] for call in tool.call_args_list}
+                self.assertEqual(1, len(descriptor_paths))
+                self.assertEqual({snapshot.pdf_pass_fds()}, inherited)
+            finally:
+                snapshot.close()
+
     def test_unembedded_citation_destinations_are_a_stable_blocking_error(self) -> None:
         links = [
             ("second", "https://z.example/source"),
@@ -129,6 +177,39 @@ class PdfExtractionFailureTests(unittest.TestCase):
             "https://a.example/source. Add an exact TEXT=URL --link for every missing citation",
             str(caught.exception),
         )
+
+
+class SnapshotLifecycleTests(unittest.TestCase):
+    def test_cleanup_does_not_override_primary_extraction_error(self) -> None:
+        snapshot = mock.Mock()
+        snapshot.close.return_value = converter.IngestionError("snapshot_cleanup", "close failed")
+        target = mock.Mock(path=Path("unused.md"))
+        primary = converter.IngestionError("corrupt_pdf", "primary failure")
+        with (
+            mock.patch.object(converter, "validate_input", return_value=snapshot),
+            mock.patch.object(converter, "validate_output", return_value=target),
+            mock.patch.object(converter, "read_input", side_effect=primary),
+        ):
+            with self.assertRaises(converter.IngestionError) as caught:
+                converter.run(["paper.pdf", "--title", "Paper"])
+        self.assertIs(primary, caught.exception)
+
+    def test_cleanup_failure_blocks_publication_with_stable_category(self) -> None:
+        snapshot = mock.Mock()
+        cleanup = converter.IngestionError("snapshot_cleanup", "close failed")
+        snapshot.close.return_value = cleanup
+        target = mock.Mock(path=Path("unused.md"))
+        with (
+            mock.patch.object(converter, "validate_input", return_value=snapshot),
+            mock.patch.object(converter, "validate_output", return_value=target),
+            mock.patch.object(converter, "read_input", return_value="Body text."),
+            mock.patch.object(converter, "extract_pdf_links", return_value=[]),
+            mock.patch.object(converter, "_atomic_create_post") as create,
+        ):
+            with self.assertRaises(converter.IngestionError) as caught:
+                converter.run(["paper.txt", "--title", "Paper"])
+        self.assertIs(cleanup, caught.exception)
+        create.assert_not_called()
 
 
 class AtomicOutputTests(unittest.TestCase):

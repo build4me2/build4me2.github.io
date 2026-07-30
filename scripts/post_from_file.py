@@ -91,40 +91,81 @@ class InputSnapshot:
         self.suffix = suffix
         self.data = data
         self.descriptor = descriptor
-        self._snapshot_path: Path | None = None
+        self._pdf_descriptor = -1
 
     def __eq__(self, other: object) -> bool:
         # Preserve the small public helper's historical convenience in callers.
         return self.path == other
 
     def pdf_path(self) -> Path:
-        if self._snapshot_path is None:
+        """Return an inherited-fd path for one immutable, unlinked PDF copy."""
+        if self._pdf_descriptor < 0:
+            descriptor = -1
             try:
                 descriptor, name = tempfile.mkstemp(prefix="hugo-ingestion-", suffix=".pdf")
-                try:
-                    with os.fdopen(descriptor, "wb") as destination:
-                        destination.write(self.data)
-                        destination.flush()
-                        os.fsync(destination.fileno())
-                except BaseException:
-                    Path(name).unlink(missing_ok=True)
-                    raise
             except OSError as exc:
                 raise IngestionError(
                     "extraction", f"cannot create validated PDF snapshot: {exc.strerror or exc}"
                 ) from None
-            self._snapshot_path = Path(name)
-        return self._snapshot_path
 
-    def close(self) -> None:
-        if self.descriptor >= 0:
-            os.close(self.descriptor)
-            self.descriptor = -1
-        if self._snapshot_path is not None:
-            self._snapshot_path.unlink(missing_ok=True)
-            self._snapshot_path = None
+            # Unlink immediately, before copying any validated bytes. Thus the
+            # snapshot is never a mutable named input, even during construction.
+            try:
+                os.unlink(name)
+            except OSError as exc:
+                try:
+                    os.close(descriptor)
+                except OSError:
+                    pass
+                raise IngestionError(
+                    "snapshot_cleanup",
+                    f"cannot unlink validated PDF snapshot: {exc.strerror or exc}",
+                ) from None
+
+            try:
+                with os.fdopen(os.dup(descriptor), "wb") as destination:
+                    destination.write(self.data)
+                    destination.flush()
+                    os.fsync(destination.fileno())
+            except OSError as exc:
+                try:
+                    os.close(descriptor)
+                except OSError:
+                    pass
+                raise IngestionError(
+                    "extraction", f"cannot create validated PDF snapshot: {exc.strerror or exc}"
+                ) from None
+            self._pdf_descriptor = descriptor
+        return Path(f"/proc/self/fd/{self._pdf_descriptor}")
+
+    def pdf_pass_fds(self) -> tuple[int, ...]:
+        self.pdf_path()
+        return (self._pdf_descriptor,)
+
+    def close(self) -> IngestionError | None:
+        """Close retained descriptors, returning (never throwing) a categorized failure."""
+        errors: list[str] = []
+        for attribute, label in (
+            ("_pdf_descriptor", "PDF snapshot"),
+            ("descriptor", "validated input"),
+        ):
+            descriptor = getattr(self, attribute)
+            if descriptor < 0:
+                continue
+            # Mark it closed first so destructor retries cannot close an fd that
+            # the process may since have reused after an ambiguous close error.
+            setattr(self, attribute, -1)
+            try:
+                os.close(descriptor)
+            except OSError as exc:
+                errors.append(f"cannot close {label}: {exc.strerror or exc}")
+        if errors:
+            return IngestionError("snapshot_cleanup", "; ".join(errors))
+        return None
 
     def __del__(self) -> None:
+        # Destructors cannot report errors safely. Normal ingestion explicitly
+        # closes the snapshot before publication and handles this return value.
         self.close()
 
 
@@ -328,7 +369,9 @@ def _diagnostic(stderr: bytes | str) -> str:
     return detail
 
 
-def _run_pdf_tool(tool: str, arguments: list[str]) -> bytes:
+def _run_pdf_tool(
+    tool: str, arguments: list[str], *, pass_fds: tuple[int, ...] = ()
+) -> bytes:
     """Run one required Poppler tool with bounded resources and diagnostics."""
     executable = shutil.which(tool)
     if executable is None:
@@ -340,6 +383,7 @@ def _run_pdf_tool(tool: str, arguments: list[str]) -> bytes:
             stderr=subprocess.PIPE,
             timeout=PDF_TOOL_TIMEOUT_SECONDS,
             check=False,
+            pass_fds=pass_fds,
         )
     except subprocess.TimeoutExpired as exc:
         detail = _diagnostic(exc.stderr or b"")
@@ -366,9 +410,11 @@ def _decode_tool_output(tool: str, output: bytes) -> str:
         ) from None
 
 
-def _pdf_page_count(path: Path) -> int:
+def _pdf_page_count(path: Path, *, pass_fds: tuple[int, ...] = ()) -> int:
     try:
-        raw_info = _run_pdf_tool("pdfinfo", ["-enc", "UTF-8", str(path)])
+        raw_info = _run_pdf_tool(
+            "pdfinfo", ["-enc", "UTF-8", str(path)], pass_fds=pass_fds
+        )
     except IngestionError as exc:
         if exc.category == "tool_failed":
             raise IngestionError("corrupt_pdf", f"pdfinfo could not read the PDF: {exc}") from None
@@ -403,8 +449,11 @@ def read_input(source: Path | InputSnapshot) -> str:
         return _read_utf8_text(source)
 
     path = source.pdf_path() if isinstance(source, InputSnapshot) else source
-    pages = _pdf_page_count(path)
-    output = _run_pdf_tool("pdftotext", ["-layout", "-enc", "UTF-8", str(path), "-"])
+    pass_fds = source.pdf_pass_fds() if isinstance(source, InputSnapshot) else ()
+    pages = _pdf_page_count(path, pass_fds=pass_fds)
+    output = _run_pdf_tool(
+        "pdftotext", ["-layout", "-enc", "UTF-8", str(path), "-"], pass_fds=pass_fds
+    )
     text = _decode_tool_output("pdftotext", output)
     visible_characters = len(re.findall(r"[^\s\x0c]", text))
     if visible_characters == 0:
@@ -430,16 +479,22 @@ def extract_pdf_links(source: Path | InputSnapshot) -> list[tuple[str, str]]:
     if suffix != ".pdf":
         return []
     path = source.pdf_path() if isinstance(source, InputSnapshot) else source
+    pass_fds = source.pdf_pass_fds() if isinstance(source, InputSnapshot) else ()
     import html as html_mod
 
     annotation_report = _decode_tool_output(
-        "pdfinfo", _run_pdf_tool("pdfinfo", ["-url", "-enc", "UTF-8", str(path)])
+        "pdfinfo",
+        _run_pdf_tool(
+            "pdfinfo", ["-url", "-enc", "UTF-8", str(path)], pass_fds=pass_fds
+        ),
     )
     expected_urls = set(re.findall(r"https?://\S+", annotation_report))
     html = _decode_tool_output(
         "pdftohtml",
         _run_pdf_tool(
-            "pdftohtml", ["-stdout", "-i", "-noframes", "-enc", "UTF-8", str(path)]
+            "pdftohtml",
+            ["-stdout", "-i", "-noframes", "-enc", "UTF-8", str(path)],
+            pass_fds=pass_fds,
         ),
     )
 
@@ -830,23 +885,37 @@ def run(argv: Sequence[str] | None = None) -> Path:
             if "=" not in item or not all(part.strip() for part in item.split("=", 1)):
                 raise IngestionError("invalid_link", "--link must use non-empty TEXT=URL values")
 
-        # Both PDF extraction passes consume one private snapshot. TXT decoding
-        # consumes the bytes captured from the retained validated descriptor.
-        raw_text = read_input(input_snapshot)
-        pdf_links = extract_pdf_links(input_snapshot)
-        body = parse_body(raw_text, title, args.keep_references)
-        body = fix_extraction_artifacts(body)
-        body = embed_footnote_links(body, footnote_url_map(pdf_links, raw_text))
-        body = embed_links(body, args.link)
-        body = "\n\n".join(p.strip() for p in body.split("\n\n") if p.strip())
-        if not body:
-            raise IngestionError("empty_extraction", "extraction produced no publishable body text")
-        check_all_sources_embedded(body, pdf_links)
+        extraction_error: BaseException | None = None
+        try:
+            # Every Poppler pass inherits the same unlinked descriptor. TXT
+            # decoding consumes bytes captured from the validated input fd.
+            raw_text = read_input(input_snapshot)
+            pdf_links = extract_pdf_links(input_snapshot)
+            body = parse_body(raw_text, title, args.keep_references)
+            body = fix_extraction_artifacts(body)
+            body = embed_footnote_links(body, footnote_url_map(pdf_links, raw_text))
+            body = embed_links(body, args.link)
+            body = "\n\n".join(p.strip() for p in body.split("\n\n") if p.strip())
+            if not body:
+                raise IngestionError("empty_extraction", "extraction produced no publishable body text")
+            check_all_sources_embedded(body, pdf_links)
+            post = front_matter(title, date, slug) + body + "\n"
+        except BaseException as exc:
+            extraction_error = exc
 
-        post = front_matter(title, date, slug) + body + "\n"
+        snapshot_cleanup_error = input_snapshot.close()
+        if extraction_error is not None:
+            # Cleanup must never replace the stable primary ingestion failure.
+            raise extraction_error
+        if snapshot_cleanup_error is not None:
+            # Snapshot lifecycle completes before atomic publication, so this
+            # explicit failure cannot leave a newly publishable destination.
+            raise snapshot_cleanup_error
+
         _atomic_create_post(output, post)
         return output.path
     finally:
+        # Idempotent fallback for failures during metadata/output validation.
         input_snapshot.close()
         if output is not None:
             output.close()
