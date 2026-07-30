@@ -1,0 +1,22 @@
+{
+  "schema": "preservation-review-records/v1",
+  "records": [
+    {
+      "id": "initial-preservation-inventory",
+      "kind": "baseline-capture",
+      "baselineSourceCommit": "8daa522",
+      "scope": [
+        "four established article routes, titles, front matter, and prose",
+        "citation destinations in source and rendered pages",
+        "home listing presence and ordering",
+        "Hugo configuration and PaperMod gitlink",
+        "local layouts, extended CSS, header/footer, and theme toggle behavior"
+      ],
+      "changesApproved": [],
+      "verificationEvidence": [
+        "Baseline was computed from the inherited repository without editing article or presentation sources.",
+        "A clean Hugo render was compared with source titles, prose, links, routes, listing order, and element structure."
+      ]
+    }
+  ]
+}

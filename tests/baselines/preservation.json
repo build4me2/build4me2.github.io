@@ -1,0 +1,194 @@
+{
+  "schema": "hugo-preservation-baseline/v1",
+  "capturedFrom": "8daa522",
+  "policy": {
+    "purpose": "Preserve the four established essays, routes, verified citation destinations, and visual behavior.",
+    "approvedReconciliation": "Only citation destination or front-matter corrections documented in tests/baselines/review-records.json may update this baseline.",
+    "prohibitedChanges": "Essay arguments, typography, layout, colors, listing design, header/footer behavior, and light/dark toggle behavior are not reconciliation changes."
+  },
+  "paperModCommit": "154d006e0182dfc7da38008323976b02e6bfab4a",
+  "protectedFiles": {
+    "hugo.toml": "bd131149be2b09784f2079d6ced203a2e42eb35fdcbdff217236b3dd1050e2c0",
+    "layouts/_default/list.html": "2df2f3a676ab416264fc8b267a35ab315da8c1f43ef39b243c65a9e8ffd5bcf2",
+    "layouts/_default/single.html": "78c35ca5e3fcd6a457990f8e0dc019171fcb9810b87d88bb3b97549677d87421",
+    "layouts/partials/breadcrumbs.html": "4f68e9c898f0efcb2d544b28481bc79efb3296a8dfb3d8b3c3fd9f82a1c58529",
+    "layouts/partials/citations.html": "90a8d4f106f4c4f1a7aaa94ca863cd6a84ffd8786beed8c73c394ef8cf6f4ad7",
+    "layouts/partials/extend_post_content.html": "e9a9914eba93f8a1651e3c8135afbcdbb30d6798c91f8366859bdb2474f3789f",
+    "layouts/partials/footer.html": "748aff37cf968d480991567fe814b7aab1a337d93afa83a83ab1cfa4b9ae8a3d",
+    "layouts/partials/header.html": "a4f20a4d84b100f3092ddb5b5a4c9403b7e1c470c6e8cae2527f744231c7d0ba",
+    "layouts/shortcodes/citations.html": "9ea480d85a47e96702abab31f70aa339d90134c763e553f26dd49e84e86621db",
+    "layouts/shortcodes/cite.html": "fc050edeaa709b2d544d4d70f6f7ca6393d37240b5ec429e9437ebacc4a3a52e",
+    "assets/css/extended/citations.css": "b163323a40a903921f0909ddb7a101197ef7945e85d6ed6996a1b2ea3e4b64d0",
+    "assets/css/extended/layout.css": "46f93b57cf17b1d5e2e18725940eb8f7d71caf1c880d12c265a4da5997d60a2d"
+  },
+  "hugoConfiguration": {
+    "baseURL": "https://build4me2.github.io/",
+    "locale": "en-US",
+    "title": "Manisha Chand",
+    "theme": "PaperMod",
+    "permalinks.posts": "/:slug/",
+    "params.defaultTheme": "auto",
+    "params.ShowReadingTime": true,
+    "params.ShowShareButtons": false,
+    "params.ShowPostNavLinks": false,
+    "params.ShowBreadCrumbs": false,
+    "params.ShowCodeCopyButtons": true,
+    "params.ShowWordCount": false,
+    "params.ShowToc": false,
+    "markup.goldmark.renderer.unsafe": true
+  },
+  "homeListing": [
+    {
+      "route": "/freedom-of-speech-safe-online/",
+      "title": "Freedom of Speech Is More Important Than the Ability to Feel Safe Online",
+      "date": "Mar 11, 2026"
+    },
+    {
+      "route": "/technology-companies-know-too-much-about-us/",
+      "title": "Technology Companies Know Too Much About Us",
+      "date": "Feb 24, 2026"
+    },
+    {
+      "route": "/code-power-and-consequences/",
+      "title": "Code, Power, and Consequence: Trade Secret Law and the Prosecution of Sergey Aleynikov",
+      "date": "Feb 9, 2026"
+    },
+    {
+      "route": "/ethical-frameworks-in-development-of-technology/",
+      "title": "Ethical Frameworks for Development in Technology",
+      "date": "Feb 9, 2026"
+    }
+  ],
+  "articles": [
+    {
+      "source": "content/posts/freedom-of-speech-safe-online.md",
+      "route": "/freedom-of-speech-safe-online/",
+      "frontMatter": {
+        "title": "Freedom of Speech Is More Important Than the Ability to Feel Safe Online",
+        "date": "2026-03-11T09:00:00-07:00",
+        "draft": false,
+        "slug": "freedom-of-speech-safe-online",
+        "hideSummary": true,
+        "ShowToc": false
+      },
+      "proseSha256": "26bee5cfdbc08887555c6fbe036382df4c02fb46071bf918f794db2cb2f9abd4",
+      "renderedProseSha256": "c14b0e102d8a72a19e6ace963eb3ec33645d033065feb7d709998e0a5155fe7d",
+      "citationDestinations": [
+        "https://www.pearson.com/en-us/subject-catalog/p/gift-of-fire-social-legal-and-ethical-issues-for-computing-technology/P200000003391",
+        "https://supreme.justia.com/cases/federal/us/432/43/",
+        "https://law.justia.com/cases/texas/supreme-court/1994/d-1443-0.html",
+        "https://transparency.meta.com/reports/",
+        "https://www.top10vpn.com/research/cost-of-internet-shutdowns/",
+        "https://www.techpolicy.press/lessons-from-nepal-on-the-high-cost-of-controlling-online-expression/",
+        "https://eur-lex.europa.eu/eli/reg/2022/2065/oj",
+        "https://prsindia.org/billtrack/the-information-technology-intermediary-guidelines-and-digital-media-ethics-code-rules-2021",
+        "https://www.congress.gov/117/meeting/house/114268/documents/HHRG-117-IF16-20211201-SD018.pdf",
+        "https://www.commerce.senate.gov/services/files/FC8A558E-824E-4914-BEDB-3A7B1190BD49",
+        "https://theintercept.com/2025/01/09/tiktok-ban-israel-palestine-republicans/",
+        "https://cybersecurityfordemocracy.org/",
+        "https://www.hrw.org/report/2023/12/21/metas-broken-promises/systemic-censorship-palestine-content-instagram-and"
+      ],
+      "renderedStructureSha256": "748658aa8d364817e946a2e839c332aa611b5a39e7fbfc2a9718230debf54dcf"
+    },
+    {
+      "source": "content/posts/technology-companies-know-too-much-about-us.md",
+      "route": "/technology-companies-know-too-much-about-us/",
+      "frontMatter": {
+        "title": "Technology Companies Know Too Much About Us",
+        "date": "2026-02-24T09:00:00-08:00",
+        "draft": false,
+        "slug": "technology-companies-know-too-much-about-us",
+        "hideSummary": true,
+        "ShowToc": false
+      },
+      "proseSha256": "fa371a3f23fb6c1828b4d6816e85e696170a3b5a966ae9354d80e37f8962abf8",
+      "renderedProseSha256": "2757257ba6f26f16dcfe89d945f08e3741468c9e066763cc79df2e54e4480f74",
+      "citationDestinations": [
+        "https://www.theguardian.com/commentisfree/2019/may/05/privacy-paradox-why-do-people-keep-using-tech-firms-data-facebook-scandal",
+        "https://www.hunton.com/privacy-and-cybersecurity-law-blog/european-commission-fines-apple-and-meta-for-non-compliance-with-the-dma",
+        "https://cybernews.com/resources/5-eyes-9-eyes-14-eyes-countries/",
+        "https://www.pearson.com/en-us/subject-catalog/p/gift-of-fire-social-legal-and-ethical-issues-for-computing-technology/P200000003391",
+        "https://www.pearson.com/en-us/subject-catalog/p/gift-of-fire-social-legal-and-ethical-issues-for-computing-technology/P200000003391"
+      ],
+      "renderedStructureSha256": "98d34be84cee5851cb8ff0fc7ba850353a057865ae4f08b685b86b2cf21bc591"
+    },
+    {
+      "source": "content/posts/code-power-and-consequences.md",
+      "route": "/code-power-and-consequences/",
+      "frontMatter": {
+        "title": "Code, Power, and Consequence: Trade Secret Law and the Prosecution of Sergey Aleynikov",
+        "date": "2026-02-09T10:00:00-08:00",
+        "draft": false,
+        "slug": "code-power-and-consequences",
+        "hideSummary": true,
+        "ShowToc": false
+      },
+      "proseSha256": "64dab61845355bd2cc83ff1258e1203c42fc6f3cfc1cdc8e2a184c71cb9e7d07",
+      "renderedProseSha256": "27843bcabfb92f1e8c2c1161b702e61292c9d21406ba9700fed77675df46ec1a",
+      "citationDestinations": [
+        "https://www.pearson.com/en-us/subject-catalog/p/gift-of-fire-social-legal-and-ethical-issues-for-computing-technology/P200000003391",
+        "https://www.pearson.com/en-us/subject-catalog/p/gift-of-fire-social-legal-and-ethical-issues-for-computing-technology/P200000003391",
+        "https://www.courtlistener.com/opinion/627046/united-states-v-aleynikov/",
+        "https://www.courtlistener.com/opinion/627046/united-states-v-aleynikov/",
+        "https://www.vanityfair.com/news/2013/09/michael-lewis-goldman-sachs-programmer",
+        "https://www.courtlistener.com/opinion/627046/united-states-v-aleynikov/",
+        "https://www.vanityfair.com/news/2013/09/michael-lewis-goldman-sachs-programmer",
+        "https://www.law.cornell.edu/uscode/text/17/107",
+        "https://supreme.justia.com/cases/federal/us/510/569/",
+        "https://www.law.cornell.edu/uscode/text/17/107",
+        "https://www.law.cornell.edu/uscode/text/18/1832",
+        "https://www.congress.gov/bill/114th-congress/senate-bill/1890",
+        "https://www.vanityfair.com/news/2013/09/michael-lewis-goldman-sachs-programmer",
+        "https://www.courtlistener.com/opinion/627046/united-states-v-aleynikov/",
+        "https://www.bloomberg.com",
+        "https://www.nycourts.gov/REPORTER/3dseries/2018/2018_03174.htm",
+        "https://www.bloomberg.com",
+        "https://www.courtlistener.com/opinion/627046/united-states-v-aleynikov/",
+        "https://www.vanityfair.com/news/2013/09/michael-lewis-goldman-sachs-programmer",
+        "https://www.nytimes.com",
+        "https://www.congress.gov/bill/112th-congress/senate-bill/3642",
+        "https://www.congress.gov/bill/114th-congress/senate-bill/1890"
+      ],
+      "renderedStructureSha256": "bb2e524ecccfdf8a7b4ce3b90add2bbd9eba9f73f3dda71fcfb28d1e143cebd1"
+    },
+    {
+      "source": "content/posts/ethical-frameworks-in-development-of-technology.md",
+      "route": "/ethical-frameworks-in-development-of-technology/",
+      "frontMatter": {
+        "title": "Ethical Frameworks for Development in Technology",
+        "date": "2026-02-09T09:00:00-08:00",
+        "draft": false,
+        "slug": "ethical-frameworks-in-development-of-technology",
+        "hideSummary": true,
+        "ShowToc": false
+      },
+      "proseSha256": "687e18b6896ccc8afd90f7b060c9fdd18f1154b2ec7eb9511db555a5fc1cc73e",
+      "renderedProseSha256": "51b7c70d8ff5d5b3c7e4f8907e46f0fa6dfe1f6485e9fc251603963ca4cece22",
+      "citationDestinations": [
+        "https://conversationswithbillkristol.org/transcript/peter-thiel-transcript/",
+        "https://eng.vt.edu/magazine/stories/fall-2023/ai.html"
+      ],
+      "renderedStructureSha256": "9f9035cdc3b53c623d900c9bd1c234e712feb7461bb245903c3ec72eca700788"
+    }
+  ],
+  "renderedContract": {
+    "homeMarkers": [
+      "<header.page-header>",
+      "<ul.paper-list>",
+      "<li.paper-list-item>"
+    ],
+    "articleMarkers": [
+      "<article.post-single>",
+      "<header.post-header>",
+      "<h1.entry-hint-parent.post-title>",
+      "<div.md-content.post-content>"
+    ],
+    "siteMarkers": [
+      "<header.header>",
+      "<nav.header-nav>",
+      "<button#theme-toggle.theme-toggle>",
+      "<footer.footer.site-footer>"
+    ],
+    "homeStructureSha256": "a3a56b6221a20e6667006625866260f4b10b43ee8544c8d05b13889bc298b039"
+  }
+}
