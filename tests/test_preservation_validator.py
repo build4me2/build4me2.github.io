@@ -61,6 +61,53 @@ class SourcePreservationTests(unittest.TestCase):
             self.assertTrue(validator.validate_hugo_toolchain(expected, True, errors))
         self.assertEqual(errors, [])
 
+    def test_repository_pin_contract_rejects_floating_and_mismatched_dependencies(self) -> None:
+        baseline = {
+            "hugoVersion": validator.PINNED_HUGO_VERSION,
+            "hugoExtended": True,
+            "paperModCommit": validator.PINNED_PAPERMOD_COMMIT,
+        }
+        valid_workflow = (
+            "env:\n  HUGO_VERSION: '0.162.0'\nsteps:\n"
+            "  - with:\n      hugo-version: '${{ env.HUGO_VERSION }}'\n"
+            "      extended: true\n"
+        )
+        cases = [
+            (
+                "floating Actions version",
+                baseline,
+                valid_workflow.replace("'0.162.0'", "latest"),
+                "must declare exactly one HUGO_VERSION set to '0.162.0'",
+            ),
+            (
+                "Actions bypasses shared pin",
+                baseline,
+                valid_workflow.replace("'${{ env.HUGO_VERSION }}'", "latest"),
+                "Hugo setup must consume exactly '${{ env.HUGO_VERSION }}'",
+            ),
+            (
+                "unexpected theme commit",
+                {**baseline, "paperModCommit": "a" * 40},
+                valid_workflow,
+                f"expected {validator.PINNED_PAPERMOD_COMMIT}",
+            ),
+        ]
+        for label, candidate, workflow, diagnostic in cases:
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                (root / ".hugo-version").write_text("0.162.0\n", encoding="utf-8")
+                path = root / ".github/workflows/hugo.yml"
+                path.parent.mkdir(parents=True)
+                path.write_text(workflow, encoding="utf-8")
+                errors: list[str] = []
+                with mock.patch.object(validator, "ROOT", root):
+                    validator.validate_repository_pins(candidate, errors)
+                self.assertTrue(any(diagnostic in error for error in errors), errors)
+
+        errors = []
+        validator.validate_repository_pins(baseline, errors)
+        self.assertEqual(errors, [])
+
     def test_theme_checkout_preflight_names_uninitialized_and_mismatched_worktrees(self) -> None:
         expected = "a" * 40
         gitlink = subprocess.CompletedProcess([], 0, f"160000 {expected} 0\tthemes/PaperMod\n", "")

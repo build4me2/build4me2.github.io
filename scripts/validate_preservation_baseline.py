@@ -25,6 +25,10 @@ ROOT = Path(__file__).resolve().parents[1]
 BASELINE_PATH = ROOT / "tests" / "baselines" / "preservation.json"
 REVIEW_RECORDS_PATH = ROOT / "tests" / "baselines" / "review-records.json"
 CAPTURED_FROM_COMMIT = "8daa5220b19ec7e529d4354c77707bb882c9bce3"
+PINNED_HUGO_VERSION = "0.162.0"
+PINNED_PAPERMOD_COMMIT = "154d006e0182dfc7da38008323976b02e6bfab4a"
+HUGO_VERSION_FILE = Path(".hugo-version")
+HUGO_WORKFLOW = Path(".github/workflows/hugo.yml")
 PRESENTATION_ROOTS = {
     "extendedCss": Path("assets/css/extended"),
     "layouts": Path("layouts"),
@@ -191,6 +195,68 @@ def hugo_diagnostic(output: str, destination: Path) -> str:
 
 def fail(errors: list[str], message: str) -> None:
     errors.append(message)
+
+
+def validate_repository_pins(baseline: dict[str, Any], errors: list[str]) -> None:
+    """Reject drift or floating values in every committed build-tool declaration."""
+    if baseline["hugoVersion"] != PINNED_HUGO_VERSION:
+        fail(
+            errors,
+            f"build dependency pin mismatch: preservation baseline declares Hugo "
+            f"{baseline['hugoVersion']!r}; expected exact version {PINNED_HUGO_VERSION}",
+        )
+    if baseline["hugoExtended"] is not True:
+        fail(errors, "build dependency pin mismatch: Hugo Extended must be required")
+    if baseline["paperModCommit"] != PINNED_PAPERMOD_COMMIT:
+        fail(
+            errors,
+            f"build dependency pin mismatch: preservation baseline declares PaperMod "
+            f"{baseline['paperModCommit']!r}; expected {PINNED_PAPERMOD_COMMIT}",
+        )
+
+    version_file = ROOT / HUGO_VERSION_FILE
+    try:
+        local_version = version_file.read_text(encoding="utf-8")
+    except OSError:
+        local_version = None
+    if local_version != PINNED_HUGO_VERSION + "\n":
+        observed = None if local_version is None else local_version.strip()
+        fail(
+            errors,
+            f"build dependency pin mismatch: {HUGO_VERSION_FILE} declares {observed!r}; "
+            f"expected exact version {PINNED_HUGO_VERSION}",
+        )
+
+    workflow_path = ROOT / HUGO_WORKFLOW
+    try:
+        workflow = workflow_path.read_text(encoding="utf-8")
+    except OSError:
+        fail(errors, f"build dependency pin mismatch: cannot read {HUGO_WORKFLOW}")
+        return
+
+    declarations = re.findall(r"(?m)^\s*HUGO_VERSION:\s*(['\"]?)([^'\"\s#]+)\1\s*(?:#.*)?$", workflow)
+    versions = [value for _quote, value in declarations]
+    if versions != [PINNED_HUGO_VERSION]:
+        fail(
+            errors,
+            f"build dependency pin mismatch: {HUGO_WORKFLOW} must declare exactly one "
+            f"HUGO_VERSION set to {PINNED_HUGO_VERSION!r}; found {versions!r}",
+        )
+    action_versions = re.findall(r"(?m)^\s*hugo-version:\s*(['\"]?)(.*?)\1\s*$", workflow)
+    values = [value for _quote, value in action_versions]
+    if values != ["${{ env.HUGO_VERSION }}"]:
+        fail(
+            errors,
+            f"build dependency pin mismatch: {HUGO_WORKFLOW} Hugo setup must consume "
+            "exactly '${{ env.HUGO_VERSION }}'",
+        )
+    extended_values = re.findall(r"(?m)^\s*extended:\s*(\S+)\s*$", workflow)
+    if extended_values != ["true"]:
+        fail(
+            errors,
+            f"build dependency pin mismatch: {HUGO_WORKFLOW} must request exactly one "
+            "Extended Hugo setup",
+        )
 
 
 def validate_hugo_toolchain(expected_version: str, require_extended: bool, errors: list[str]) -> bool:
@@ -851,6 +917,7 @@ def main() -> int:
         return 1
 
     errors: list[str] = []
+    validate_repository_pins(baseline, errors)
     toolchain_ready = validate_hugo_toolchain(
         baseline["hugoVersion"], baseline["hugoExtended"], errors
     )
