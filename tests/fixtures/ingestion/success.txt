@@ -1,0 +1,5 @@
+Fixture Paper
+
+This controlled UTF-8 fixture has enough body text to create a complete post safely.
+
+Its second paragraph verifies that successful ingestion preserves complete output.
