@@ -19,7 +19,7 @@ Use `--source-only` only when Hugo is unavailable. The full check builds with an
 - every citation destination, including repeats and order, in both source and output;
 - the established articles' presence and relative order on the home page;
 - canonical rendered element structure for the home and article pages;
-- local layout and extended CSS file hashes, including header, footer, listing, citation, and theme-toggle overrides;
+- complete, sorted file inventories and hashes for local layouts and extended CSS, including header, footer, listing, citation, and theme-toggle overrides (new override files are rejected);
 - behavior-relevant Hugo settings (including `defaultTheme = "auto"`) and the PaperMod gitlink commit.
 
 The validator fails with a focused diagnostic when any protected value changes. It does not access the network and uses only Python's standard library, Git, and the locally installed Hugo executable.

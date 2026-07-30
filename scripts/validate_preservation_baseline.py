@@ -23,6 +23,10 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 BASELINE_PATH = ROOT / "tests" / "baselines" / "preservation.json"
+PRESENTATION_ROOTS = {
+    "extendedCss": Path("assets/css/extended"),
+    "layouts": Path("layouts"),
+}
 
 
 def digest(data: bytes | str) -> str:
@@ -169,7 +173,32 @@ def fail(errors: list[str], message: str) -> None:
     errors.append(message)
 
 
+def validate_presentation_file_sets(baseline: dict[str, Any], errors: list[str]) -> None:
+    """Reject additions and removals as well as edits to known presentation files."""
+    inventory = baseline.get("presentationFileSets", {})
+    for name, root in PRESENTATION_ROOTS.items():
+        expected = inventory.get(name)
+        if not isinstance(expected, list) or not all(isinstance(path, str) for path in expected):
+            fail(errors, f"presentation file-set baseline is missing or invalid: {name}")
+            continue
+        canonical_expected = sorted(set(expected))
+        if expected != canonical_expected:
+            fail(errors, f"presentation file-set baseline is not sorted and unique: {name}")
+
+        directory = ROOT / root
+        actual = sorted(
+            path.relative_to(ROOT).as_posix()
+            for path in directory.rglob("*")
+            if path.is_file()
+        ) if directory.is_dir() else []
+        for relative in sorted(set(expected) - set(actual)):
+            fail(errors, f"protected presentation file missing: {relative}")
+        for relative in sorted(set(actual) - set(expected)):
+            fail(errors, f"unexpected presentation override: {relative}")
+
+
 def validate_sources(baseline: dict[str, Any], errors: list[str]) -> None:
+    validate_presentation_file_sets(baseline, errors)
     for relative, expected in baseline["protectedFiles"].items():
         path = ROOT / relative
         if not path.is_file():

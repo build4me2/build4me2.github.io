@@ -29,6 +29,15 @@ class SourcePreservationTests(unittest.TestCase):
         for article in baseline["articles"]:
             _, body = validator.split_post(ROOT / article["source"])
             self.assertEqual(validator.segment_digests(body), article["proseSegmentSha256"])
+        for name, relative_root in validator.PRESENTATION_ROOTS.items():
+            inventory = baseline["presentationFileSets"][name]
+            actual = sorted(
+                path.relative_to(ROOT).as_posix()
+                for path in (ROOT / relative_root).rglob("*")
+                if path.is_file()
+            )
+            self.assertEqual(inventory, sorted(set(inventory)))
+            self.assertEqual(actual, inventory)
 
     def test_mutations_name_configuration_assets_and_prose_segment(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -50,6 +59,10 @@ class SourcePreservationTests(unittest.TestCase):
             (root / "hugo.toml").write_text("baseURL = 'https://example.invalid/'\n", encoding="utf-8")
             front_matter, exact_body = validator.split_post(post)
             baseline = {
+                "presentationFileSets": {
+                    "extendedCss": ["assets/css/extended/layout.css"],
+                    "layouts": ["layouts/partials/header.html"],
+                },
                 "protectedFiles": {
                     "layouts/partials/header.html": validator.digest(layout.read_bytes()),
                     "assets/css/extended/layout.css": validator.digest(style.read_bytes()),
@@ -68,6 +81,9 @@ class SourcePreservationTests(unittest.TestCase):
             # Independent changes exercise diagnostics without relying on mtime or path order.
             layout.write_text("<header>changed</header>\n", encoding="utf-8")
             style.write_text(":root { color: red; }\n", encoding="utf-8")
+            # New files are presentation changes even though no baseline hash exists for them.
+            (root / "layouts/zz-unapproved.html").write_text("override\n", encoding="utf-8")
+            (root / "assets/css/extended/aa-unapproved.css").write_text("body {}\n", encoding="utf-8")
             (root / "hugo.toml").write_text("title = 'Missing base URL'\n", encoding="utf-8")
             post.write_text(post.read_text(encoding="utf-8").replace("Second established", "Second altered"), encoding="utf-8")
             git_result = SimpleNamespace(stdout=f"160000 {'a' * 40} 0\tthemes/PaperMod\n")
@@ -79,6 +95,10 @@ class SourcePreservationTests(unittest.TestCase):
 
             self.assertIn("protected presentation/configuration changed: layouts/partials/header.html", errors)
             self.assertIn("protected presentation/configuration changed: assets/css/extended/layout.css", errors)
+            self.assertIn(
+                "unexpected presentation override: assets/css/extended/aa-unapproved.css", errors
+            )
+            self.assertIn("unexpected presentation override: layouts/zz-unapproved.html", errors)
             self.assertIn("Hugo setting baseURL is missing; expected 'https://example.invalid/'", errors)
             self.assertIn(
                 "essay prose segment 2 changed without baseline review: content/posts/example.md", errors

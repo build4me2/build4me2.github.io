@@ -7,6 +7,23 @@
     "prohibitedChanges": "Essay arguments, typography, layout, colors, listing design, header/footer behavior, and light/dark toggle behavior are not reconciliation changes."
   },
   "paperModCommit": "154d006e0182dfc7da38008323976b02e6bfab4a",
+  "presentationFileSets": {
+    "extendedCss": [
+      "assets/css/extended/citations.css",
+      "assets/css/extended/layout.css"
+    ],
+    "layouts": [
+      "layouts/_default/list.html",
+      "layouts/_default/single.html",
+      "layouts/partials/breadcrumbs.html",
+      "layouts/partials/citations.html",
+      "layouts/partials/extend_post_content.html",
+      "layouts/partials/footer.html",
+      "layouts/partials/header.html",
+      "layouts/shortcodes/citations.html",
+      "layouts/shortcodes/cite.html"
+    ]
+  },
   "protectedFiles": {
     "hugo.toml": "bd131149be2b09784f2079d6ced203a2e42eb35fdcbdff217236b3dd1050e2c0",
     "layouts/_default/list.html": "2df2f3a676ab416264fc8b267a35ab315da8c1f43ef39b243c65a9e8ffd5bcf2",
