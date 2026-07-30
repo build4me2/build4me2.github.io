@@ -32,6 +32,32 @@ from pathlib import Path
 from typing import Mapping, NamedTuple, Sequence
 from urllib.parse import urlsplit, urlunsplit
 
+# Public review APIs live in a small independent module so override files can be
+# validated without invoking ingestion. Re-export them here alongside the
+# citation extraction/matching API for existing converter callers.
+try:
+    from scripts.citation_overrides import (
+        CitationOverride,
+        OverrideApplicationResult,
+        OverrideUse,
+        OverrideValidationError,
+        apply_citation_overrides,
+        document_identity,
+        load_citation_overrides,
+        validate_override_document,
+    )
+except ModuleNotFoundError:  # Direct execution from the scripts/ directory.
+    from citation_overrides import (  # type: ignore[no-redef]
+        CitationOverride,
+        OverrideApplicationResult,
+        OverrideUse,
+        OverrideValidationError,
+        apply_citation_overrides,
+        document_identity,
+        load_citation_overrides,
+        validate_override_document,
+    )
+
 BLOG_ROOT = Path(__file__).resolve().parents[1]
 POSTS_DIR = BLOG_ROOT / "content" / "posts"
 SUPPORTED_INPUT_SUFFIXES = frozenset({".pdf", ".txt"})

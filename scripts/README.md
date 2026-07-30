@@ -48,6 +48,36 @@ with citations inherits any blocking citation state. `CitationMatchResult.blocki
 is therefore true whenever any disposition is not `matched` (uncited sentences
 are explicitly `matched` with a no-citation explanation).
 
+### Reviewed citation overrides
+
+The committed `citation-overrides.json` file is the only review-override format.
+Its machine-readable schema is `scripts/citation-overrides.schema.json`; runtime
+validation is intentionally stricter than generic JSON Schema validation (it also
+rejects duplicate JSON members, duplicate/conflicting targets, non-normalized
+URLs, wildcard identities, and control characters).
+
+An override is keyed by `documentIdentity` (the `sha256:` value returned by
+`scripts.citation_overrides.document_identity`) and one exact semantic
+`citationIdentity`, such as `numeric:7` or `author-year:smith:2020`. Each record
+requires a unique stable ID, the reviewer, explicit
+`resolve-citation-destination` intent, one exact normalized HTTP(S) destination,
+a rationale, and exactly one of `evidenceText` or `evidenceSource`. Evidence text
+must still occur in the cited sentence when the override is consumed. Never use
+globs, URL patterns, or generic waiver language.
+
+`load_citation_overrides()` validates a file and
+`apply_citation_overrides()` applies it to a complete mapping of document hashes
+to `CitationMatchResult` objects. Every record must be consumed exactly once by
+one currently blocking citation and one uniquely orphaned recovered candidate.
+A missing/changed document, absent or ambiguous citation identity, already-fixed
+citation, duplicate destination candidate, stale evidence, or candidate already
+owned by another record fails validation. Application changes only that citation,
+that candidate, and their owning sentence; unrelated unresolved, malformed,
+ambiguous, duplicate, or conflicting records remain blocking. Thus an override
+cannot act as a broad waiver or make an otherwise defective audit publishable.
+The returned `OverrideUse` records provide the exact citation/candidate pairing
+for human-readable and JSON audit reports.
+
 ## Safety contract
 
 The command accepts only regular, non-symlink `.pdf` and UTF-8 `.txt` files of
