@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import secrets
 import shutil
 import stat
 import subprocess
@@ -82,8 +83,53 @@ def _contains_symlink(path: Path) -> bool:
     return False
 
 
-def validate_input(path: Path, max_bytes: int = MAX_INPUT_BYTES) -> Path:
-    """Validate an input without following a final-component symlink."""
+class InputSnapshot:
+    """Bytes read from one validated open input object, never from its name again."""
+
+    def __init__(self, path: Path, suffix: str, data: bytes, descriptor: int) -> None:
+        self.path = path
+        self.suffix = suffix
+        self.data = data
+        self.descriptor = descriptor
+        self._snapshot_path: Path | None = None
+
+    def __eq__(self, other: object) -> bool:
+        # Preserve the small public helper's historical convenience in callers.
+        return self.path == other
+
+    def pdf_path(self) -> Path:
+        if self._snapshot_path is None:
+            try:
+                descriptor, name = tempfile.mkstemp(prefix="hugo-ingestion-", suffix=".pdf")
+                try:
+                    with os.fdopen(descriptor, "wb") as destination:
+                        destination.write(self.data)
+                        destination.flush()
+                        os.fsync(destination.fileno())
+                except BaseException:
+                    Path(name).unlink(missing_ok=True)
+                    raise
+            except OSError as exc:
+                raise IngestionError(
+                    "extraction", f"cannot create validated PDF snapshot: {exc.strerror or exc}"
+                ) from None
+            self._snapshot_path = Path(name)
+        return self._snapshot_path
+
+    def close(self) -> None:
+        if self.descriptor >= 0:
+            os.close(self.descriptor)
+            self.descriptor = -1
+        if self._snapshot_path is not None:
+            self._snapshot_path.unlink(missing_ok=True)
+            self._snapshot_path = None
+
+    def __del__(self) -> None:
+        self.close()
+
+
+def validate_input(path: Path, max_bytes: int = MAX_INPUT_BYTES) -> InputSnapshot:
+    """Open, validate, and snapshot an input without trusting its name again."""
     if _has_parent_traversal(path):
         raise IngestionError("unsafe_input", "input path must not contain '..'")
     suffix = path.suffix.lower()
@@ -108,34 +154,49 @@ def validate_input(path: Path, max_bytes: int = MAX_INPUT_BYTES) -> Path:
 
     # Check the bytes as well as the name so renamed PDFs and obvious binary TXT
     # files cannot enter the wrong extraction path.
+    fd = -1
     try:
         flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
         fd = os.open(path, flags)
-        with os.fdopen(fd, "rb") as stream:
-            opened = os.fstat(stream.fileno())
-            if not stat.S_ISREG(opened.st_mode) or (opened.st_dev, opened.st_ino) != (info.st_dev, info.st_ino):
-                raise IngestionError("unsafe_input", "input changed while it was being validated")
-            head = stream.read()
+        opened = os.fstat(fd)
+        if not stat.S_ISREG(opened.st_mode) or (opened.st_dev, opened.st_ino) != (info.st_dev, info.st_ino):
+            os.close(fd)
+            raise IngestionError("unsafe_input", "input changed while it was being validated")
+        with os.fdopen(os.dup(fd), "rb") as stream:
+            head = stream.read(max_bytes + 1)
+        after = os.fstat(fd)
+        identity = (opened.st_dev, opened.st_ino, opened.st_size, opened.st_mtime_ns, opened.st_ctime_ns)
+        final_identity = (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns)
+        if identity != final_identity or len(head) != opened.st_size:
+            os.close(fd)
+            raise IngestionError("unsafe_input", "input changed while its validated snapshot was read")
     except IngestionError:
         raise
     except OSError as exc:
+        if fd >= 0:
+            os.close(fd)
         raise IngestionError("invalid_input", f"cannot read input: {exc.strerror or exc}") from None
 
-    is_pdf = head.startswith(b"%PDF-")
-    if suffix == ".pdf" and not is_pdf:
-        raise IngestionError("misleading_input", "a .pdf input must begin with a PDF signature")
-    if suffix == ".txt":
-        if is_pdf:
-            raise IngestionError("misleading_input", "a PDF document must not use a .txt extension")
-        if b"\x00" in head:
-            raise IngestionError("encoding_error", "TXT input contains NUL bytes")
-        try:
-            head.decode("utf-8-sig", errors="strict")
-        except UnicodeDecodeError as exc:
-            raise IngestionError(
-                "encoding_error", f"TXT input is not strict UTF-8 at byte {exc.start}"
-            ) from None
-    return path
+    snapshot = InputSnapshot(path=path, suffix=suffix, data=head, descriptor=fd)
+    try:
+        is_pdf = head.startswith(b"%PDF-")
+        if suffix == ".pdf" and not is_pdf:
+            raise IngestionError("misleading_input", "a .pdf input must begin with a PDF signature")
+        if suffix == ".txt":
+            if is_pdf:
+                raise IngestionError("misleading_input", "a PDF document must not use a .txt extension")
+            if b"\x00" in head:
+                raise IngestionError("encoding_error", "TXT input contains NUL bytes")
+            try:
+                head.decode("utf-8-sig", errors="strict")
+            except UnicodeDecodeError as exc:
+                raise IngestionError(
+                    "encoding_error", f"TXT input is not strict UTF-8 at byte {exc.start}"
+                ) from None
+    except BaseException:
+        snapshot.close()
+        raise
+    return snapshot
 
 
 def validate_title(title: str) -> str:
@@ -179,8 +240,34 @@ def validate_date(value: str | None) -> str:
     return value
 
 
-def validate_output(path: Path, posts_dir: Path = POSTS_DIR) -> Path:
-    """Require a new Markdown destination below the real posts directory."""
+class OutputTarget:
+    """A destination name bound to its already-open, no-follow parent directory."""
+
+    def __init__(self, path: Path, parent_descriptor: int, name: str) -> None:
+        self.path = path
+        self.parent_descriptor = parent_descriptor
+        self.name = name
+
+    def __eq__(self, other: object) -> bool:
+        return self.path == other
+
+    def close(self) -> None:
+        if self.parent_descriptor >= 0:
+            os.close(self.parent_descriptor)
+            self.parent_descriptor = -1
+
+    def __del__(self) -> None:
+        self.close()
+
+
+def _open_directory(path: Path, *, dir_fd: int | None = None) -> int:
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_DIRECTORY", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    return os.open(path, flags, dir_fd=dir_fd)
+
+
+def validate_output(path: Path, posts_dir: Path = POSTS_DIR) -> OutputTarget:
+    """Bind a new Markdown name to a retained, no-follow parent directory."""
     if _has_parent_traversal(path):
         raise IngestionError("unsafe_output", "output path must not contain '..'")
     candidate = path if path.is_absolute() else Path.cwd() / path
@@ -203,16 +290,30 @@ def validate_output(path: Path, posts_dir: Path = POSTS_DIR) -> Path:
         relative = candidate.relative_to(posts_root)
     except ValueError:
         raise IngestionError("unsafe_output", f"output must use a path below {posts_root}") from None
-    current = posts_root
-    for part in relative.parts:
-        current = current / part
-        if current.is_symlink():
-            raise IngestionError("unsafe_output", "output path must not contain symbolic links")
-    if candidate.exists():
-        raise IngestionError("output_exists", f"refusing to overwrite existing post: {candidate}")
-    if not candidate.parent.is_dir():
-        raise IngestionError("unsafe_output", "output parent must be an existing directory")
-    return candidate
+    descriptor = -1
+    try:
+        descriptor = _open_directory(posts_root)
+        for part in relative.parts[:-1]:
+            next_descriptor = _open_directory(Path(part), dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = next_descriptor
+        try:
+            os.stat(relative.name, dir_fd=descriptor, follow_symlinks=False)
+        except FileNotFoundError:
+            pass
+        else:
+            raise IngestionError("output_exists", f"refusing to overwrite existing post: {candidate}")
+    except IngestionError:
+        if descriptor >= 0:
+            os.close(descriptor)
+        raise
+    except OSError as exc:
+        if descriptor >= 0:
+            os.close(descriptor)
+        raise IngestionError(
+            "unsafe_output", f"cannot bind output parent without following links: {exc.strerror or exc}"
+        ) from None
+    return OutputTarget(candidate, descriptor, relative.name)
 
 
 def _diagnostic(stderr: bytes | str) -> str:
@@ -279,9 +380,9 @@ def _pdf_page_count(path: Path) -> int:
     return int(match.group(1))
 
 
-def _read_utf8_text(path: Path) -> str:
+def _read_utf8_text(source: Path | InputSnapshot) -> str:
     try:
-        data = path.read_bytes()
+        data = source.data if isinstance(source, InputSnapshot) else source.read_bytes()
     except OSError as exc:
         raise IngestionError("extraction", f"cannot read input: {exc.strerror or exc}") from None
     if b"\x00" in data:
@@ -296,10 +397,12 @@ def _read_utf8_text(path: Path) -> str:
         ) from None
 
 
-def read_input(path: Path) -> str:
-    if path.suffix.lower() != ".pdf":
-        return _read_utf8_text(path)
+def read_input(source: Path | InputSnapshot) -> str:
+    suffix = source.suffix if isinstance(source, InputSnapshot) else source.suffix.lower()
+    if suffix != ".pdf":
+        return _read_utf8_text(source)
 
+    path = source.pdf_path() if isinstance(source, InputSnapshot) else source
     pages = _pdf_page_count(path)
     output = _run_pdf_tool("pdftotext", ["-layout", "-enc", "UTF-8", str(path), "-"])
     text = _decode_tool_output("pdftotext", output)
@@ -321,14 +424,12 @@ def read_input(path: Path) -> str:
     return text
 
 
-def extract_pdf_links(path: Path) -> list[tuple[str, str]]:
-    """Return (anchor_text, url) pairs for every hyperlink annotation in the PDF.
-
-    pdftotext drops hyperlinks entirely (they are annotations, not text), so the
-    sources cited in the paper are lost unless we pull them out here.
-    """
-    if path.suffix.lower() != ".pdf":
+def extract_pdf_links(source: Path | InputSnapshot) -> list[tuple[str, str]]:
+    """Return links from the same validated PDF snapshot used for extraction."""
+    suffix = source.suffix if isinstance(source, InputSnapshot) else source.suffix.lower()
+    if suffix != ".pdf":
         return []
+    path = source.pdf_path() if isinstance(source, InputSnapshot) else source
     import html as html_mod
 
     annotation_report = _decode_tool_output(
@@ -567,10 +668,10 @@ def front_matter(title: str, date: str, slug: str) -> str:
     return f'''+++\ntitle = "{safe_title}"\ndate = {date}\ndraft = false\nslug = "{slug}"\nhideSummary = true\nShowToc = false\n+++\n\n'''
 
 
-def _validate_staged_post(path: Path, expected: bytes) -> None:
-    """Verify that the flushed staging file contains the complete rendered post."""
+def _validate_staged_post(descriptor: int, expected: bytes) -> None:
+    """Verify complete content through the retained staging descriptor."""
     try:
-        actual = path.read_bytes()
+        actual = os.pread(descriptor, len(expected) + 1, 0)
     except OSError as exc:
         raise IngestionError(
             "output_write", f"cannot validate staged output: {exc.strerror or exc}"
@@ -585,29 +686,44 @@ def _validate_staged_post(path: Path, expected: bytes) -> None:
         ) from None
 
 
-def _atomic_create_post(output: Path, post: str) -> None:
-    """Durably stage and atomically create ``output`` without replacing it.
-
-    The hard-link operation is the commit point: it makes the already-flushed
-    inode visible under the destination name in one filesystem operation and
-    fails if that name was created after validation.  Staging in the output
-    directory guarantees both names are on the same filesystem.
-    """
-    expected = post.encode("utf-8")
-    temporary: Path | None = None
-    try:
+def _atomic_create_post(output: Path | OutputTarget, post: str) -> None:
+    """Install through retained directory descriptors without replacing a name."""
+    owns_target = not isinstance(output, OutputTarget)
+    if owns_target:
+        path = output
         try:
-            descriptor, name = tempfile.mkstemp(
-                dir=output.parent, prefix=f".{output.name}.", suffix=".tmp"
-            )
-            temporary = Path(name)
+            parent_descriptor = _open_directory(path.parent)
         except OSError as exc:
-            raise IngestionError(
-                "output_write", f"cannot create staged output: {exc.strerror or exc}"
-            ) from None
+            raise IngestionError("output_write", f"cannot open output parent: {exc}") from None
+        target = OutputTarget(path, parent_descriptor, path.name)
+    else:
+        target = output
+
+    expected = post.encode("utf-8")
+    temporary_name: str | None = None
+    descriptor = -1
+    try:
+        for _ in range(100):
+            temporary_name = f".{target.name}.{secrets.token_hex(12)}.tmp"
+            try:
+                descriptor = os.open(
+                    temporary_name,
+                    os.O_RDWR | os.O_CREAT | os.O_EXCL | getattr(os, "O_CLOEXEC", 0),
+                    0o600,
+                    dir_fd=target.parent_descriptor,
+                )
+                break
+            except FileExistsError:
+                continue
+            except OSError as exc:
+                raise IngestionError(
+                    "output_write", f"cannot create staged output: {exc.strerror or exc}"
+                ) from None
+        else:
+            raise IngestionError("output_write", "cannot allocate a unique staged output")
 
         try:
-            with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as destination:
+            with os.fdopen(os.dup(descriptor), "w", encoding="utf-8", newline="\n") as destination:
                 written = destination.write(post)
                 if written != len(post):
                     raise IngestionError("output_write", "could not write the complete staged output")
@@ -620,28 +736,35 @@ def _atomic_create_post(output: Path, post: str) -> None:
                 "output_write", f"cannot flush staged output: {exc.strerror or exc}"
             ) from None
 
-        _validate_staged_post(temporary, expected)
+        _validate_staged_post(descriptor, expected)
         try:
-            # Unlike rename/replace, link fails rather than overwriting a file
-            # created by another process between validate_output and this point.
-            os.link(temporary, output, follow_symlinks=False)
+            os.link(
+                temporary_name,
+                target.name,
+                src_dir_fd=target.parent_descriptor,
+                dst_dir_fd=target.parent_descriptor,
+                follow_symlinks=False,
+            )
         except FileExistsError:
             raise IngestionError(
-                "output_exists", f"refusing to overwrite existing post: {output}"
+                "output_exists", f"refusing to overwrite existing post: {target.path}"
             ) from None
         except OSError as exc:
             raise IngestionError(
                 "output_write", f"cannot install output atomically: {exc.strerror or exc}"
             ) from None
     finally:
-        if temporary is not None:
+        if descriptor >= 0:
+            os.close(descriptor)
+        if temporary_name is not None:
             try:
-                temporary.unlink(missing_ok=True)
-            except OSError:
-                # Preserve the primary, actionable ingestion error. This is a
-                # best-effort fallback for filesystems that become unavailable
-                # while cleanup is in progress.
+                os.unlink(temporary_name, dir_fd=target.parent_descriptor)
+            except FileNotFoundError:
                 pass
+            except OSError:
+                pass
+        if owns_target:
+            target.close()
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -659,31 +782,37 @@ def build_parser() -> argparse.ArgumentParser:
 def run(argv: Sequence[str] | None = None) -> Path:
     """Validate, convert, and exclusively create one post; return its path."""
     args = build_parser().parse_args(argv)
-    input_path = validate_input(args.input)
-    title = validate_title(args.title)
-    slug = validate_slug(args.slug if args.slug is not None else slugify(title))
-    date = validate_date(args.date)
-    output = validate_output(args.output or POSTS_DIR / f"{slug}.md")
-    for item in args.link:
-        if "=" not in item or not all(part.strip() for part in item.split("=", 1)):
-            raise IngestionError("invalid_link", "--link must use non-empty TEXT=URL values")
+    input_snapshot = validate_input(args.input)
+    output: OutputTarget | None = None
+    try:
+        title = validate_title(args.title)
+        slug = validate_slug(args.slug if args.slug is not None else slugify(title))
+        date = validate_date(args.date)
+        output = validate_output(args.output or POSTS_DIR / f"{slug}.md")
+        for item in args.link:
+            if "=" not in item or not all(part.strip() for part in item.split("=", 1)):
+                raise IngestionError("invalid_link", "--link must use non-empty TEXT=URL values")
 
-    # Validate and extract page text before attempting annotation recovery so a
-    # structurally corrupt PDF receives the stable corrupt_pdf diagnostic.
-    raw_text = read_input(input_path)
-    pdf_links = extract_pdf_links(input_path)
-    body = parse_body(raw_text, title, args.keep_references)
-    body = fix_extraction_artifacts(body)
-    body = embed_footnote_links(body, footnote_url_map(pdf_links, raw_text))
-    body = embed_links(body, args.link)
-    body = "\n\n".join(p.strip() for p in body.split("\n\n") if p.strip())
-    if not body:
-        raise IngestionError("empty_extraction", "extraction produced no publishable body text")
-    check_all_sources_embedded(body, pdf_links)
+        # Both PDF extraction passes consume one private snapshot. TXT decoding
+        # consumes the bytes captured from the retained validated descriptor.
+        raw_text = read_input(input_snapshot)
+        pdf_links = extract_pdf_links(input_snapshot)
+        body = parse_body(raw_text, title, args.keep_references)
+        body = fix_extraction_artifacts(body)
+        body = embed_footnote_links(body, footnote_url_map(pdf_links, raw_text))
+        body = embed_links(body, args.link)
+        body = "\n\n".join(p.strip() for p in body.split("\n\n") if p.strip())
+        if not body:
+            raise IngestionError("empty_extraction", "extraction produced no publishable body text")
+        check_all_sources_embedded(body, pdf_links)
 
-    post = front_matter(title, date, slug) + body + "\n"
-    _atomic_create_post(output, post)
-    return output
+        post = front_matter(title, date, slug) + body + "\n"
+        _atomic_create_post(output, post)
+        return output.path
+    finally:
+        input_snapshot.close()
+        if output is not None:
+            output.close()
 
 
 def main(argv: Sequence[str] | None = None) -> int:

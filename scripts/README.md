@@ -20,8 +20,14 @@ are never overwritten. Validation failures use stable `ERROR[category]: ...`
 diagnostics, return nonzero, and do not create an output file. After all
 extraction and citation checks pass, the complete post is written to a hidden
 temporary file in the destination directory, flushed and verified byte-for-byte,
-then atomically installed without replacement. Any failure removes the staging
-file; a destination created concurrently or already present remains unchanged.
+then atomically installed without replacement. Input bytes come from the regular
+file descriptor opened during validation (PDF tools share one private validated
+snapshot), so replacing the input pathname cannot change extraction. Output
+parents are opened component-by-component without following links and retained
+through installation; staging, verification, linking, and cleanup are all
+performed relative to that bound directory descriptor. Any failure removes the
+staging file; a destination created concurrently or already present remains
+unchanged, and replacing an output parent pathname cannot redirect the post.
 
 ## Extraction failure policy
 

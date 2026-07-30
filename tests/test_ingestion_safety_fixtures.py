@@ -69,6 +69,34 @@ class IngestionFixtureTests(unittest.TestCase):
         self.assertEqual([destination], list(self.posts.glob("*.md")))
         self.assertEqual([], list(self.posts.glob(".*.tmp")))
 
+    def test_input_name_replacement_cannot_change_validated_snapshot(self) -> None:
+        source = self.root / "raced.txt"
+        source.write_text("The validated original body.\n", encoding="utf-8")
+        snapshot = converter.validate_input(source)
+        try:
+            source.unlink()
+            source.write_text("An attacker replacement body.\n", encoding="utf-8")
+            self.assertEqual("The validated original body.\n", converter.read_input(snapshot))
+        finally:
+            snapshot.close()
+
+    def test_output_parent_replacement_cannot_redirect_installation(self) -> None:
+        parent = self.posts / "bound-parent"
+        parent.mkdir()
+        output_path = parent / "post.md"
+        target = converter.validate_output(output_path, self.posts)
+        held_parent = self.posts / "held-parent"
+        parent.rename(held_parent)
+        parent.mkdir()
+        try:
+            converter._atomic_create_post(target, "complete validated post\n")
+        finally:
+            target.close()
+
+        self.assertFalse(output_path.exists(), "replacement directory received the post")
+        self.assertEqual("complete validated post\n", (held_parent / "post.md").read_text())
+        self.assertEqual([], list(self.posts.rglob(".*.tmp")))
+
     def test_invalid_encoding_empty_and_unsupported_sources_do_not_publish(self) -> None:
         invalid = self.root / "invalid.txt"
         invalid.write_bytes(b"valid prefix\n\xffinvalid")
