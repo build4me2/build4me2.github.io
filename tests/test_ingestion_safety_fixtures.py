@@ -170,6 +170,22 @@ class IngestionFixtureTests(unittest.TestCase):
         self.assertIn("Controlled PDF text", destination.read_text(encoding="utf-8"))
         self.assertEqual([], list(self.posts.glob(".*.tmp")))
 
+    @mock.patch.object(converter, "_atomic_create_post")
+    @mock.patch.object(converter, "_run_pdf_tool")
+    def test_missing_embedded_citation_blocks_before_staging_and_leaves_no_debris(
+        self, tool: mock.Mock, atomic_create: mock.Mock
+    ) -> None:
+        tool.side_effect = [
+            b"Pages: 1\n",
+            b"Controlled PDF body has enough visible characters but no citation link.\x0c",
+            b"Page Type URL\n1 Annotation https://example.com/required-source\n",
+            b'<html><body><a href="https://example.com/required-source">Reference</a></body></html>',
+        ]
+
+        self.assert_failure_clean("missing_citations", FIXTURES / "synthetic.pdf")
+        atomic_create.assert_not_called()
+        self.assertEqual([], list(self.posts.iterdir()))
+
     @mock.patch.object(converter, "_run_pdf_tool")
     def test_corrupt_empty_partial_and_invalid_tool_output_do_not_publish(self, tool: mock.Mock) -> None:
         tool.side_effect = converter.IngestionError("tool_failed", "pdfinfo exited with status 1: damaged")

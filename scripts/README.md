@@ -6,7 +6,7 @@ Blog rule: **every cited sentence must carry its source link embedded inline.** 
 
 1. It reads every hyperlink annotation in the PDF (via `pdftohtml`).
 2. Links anchored on numbered footnotes are embedded automatically on the sentence that carries that footnote marker in the body.
-3. At the end it cross-checks: any PDF source link still missing from the post is printed as a WARNING with a ready-made `--link` flag to copy. Do not publish a post while that warning lists missing sources — for APA author-year papers (no footnote numbers), add each source with `--link 'cited text=URL'`.
+3. Before any output is staged, it cross-checks every recovered PDF citation destination. Any destination still missing from the post blocks the transaction with `ERROR[missing_citations]`; no post or temporary file is created. For APA author-year papers (no footnote numbers), add each source with `--link 'cited text=URL'` and retry.
 
 ## Safety contract
 
@@ -40,10 +40,11 @@ PDF ingestion requires `pdfinfo`, `pdftotext`, and `pdftohtml` from
 `poppler-utils`. Each executable is checked explicitly and each invocation has
 a 30-second timeout with captured, bounded diagnostics. A missing executable,
 nonzero exit (including corrupt/encrypted PDFs), timeout, non-UTF-8 tool output,
-empty text, an implausibly sparse/truncated page extraction, or URL annotations
-reported by `pdfinfo` but absent from `pdftohtml` is a blocking error. These
-checks happen before the destination is created; do not bypass them—OCR or
-repair the source document instead.
+empty text, an implausibly sparse/truncated page extraction, URL annotations
+reported by `pdfinfo` but absent from `pdftohtml`, or a recovered citation
+destination that is not embedded in the converted body is a blocking error.
+These checks happen before the destination is created; do not bypass them—OCR,
+repair the source document, or supply exact `--link` mappings instead.
 
 Examples:
 

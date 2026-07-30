@@ -652,15 +652,14 @@ def embed_links(text: str, explicit_links: list[str]) -> str:
 
 
 def check_all_sources_embedded(text: str, pdf_links: list[tuple[str, str]]) -> None:
-    """Fail loudly when a source hyperlink from the PDF is missing from the post."""
-    missing = [(label, url) for label, url in pdf_links if url not in text]
-    if not missing:
-        return
-    print("\nWARNING: these source links exist in the PDF but are NOT embedded in the post.")
-    print("Every cited sentence must carry its source link. Re-run adding for each one:")
-    for label, url in missing:
-        print(f"  --link 'exact cited text from the body={url}'   # source: {label[:80]}")
-    print()
+    """Block publication when a PDF citation destination is absent from the post."""
+    missing_urls = sorted({url for _, url in pdf_links if f'href="{url}"' not in text})
+    if missing_urls:
+        raise IngestionError(
+            "missing_citations",
+            f"{len(missing_urls)} PDF citation destination(s) are not embedded; "
+            f"first missing URL: {missing_urls[0]}. Add an exact TEXT=URL --link for every missing citation",
+        )
 
 
 def front_matter(title: str, date: str, slug: str) -> str:

@@ -114,6 +114,22 @@ class PdfExtractionFailureTests(unittest.TestCase):
             "missing_annotations", lambda: converter.extract_pdf_links(Path("paper.pdf"))
         )
 
+    def test_unembedded_citation_destinations_are_a_stable_blocking_error(self) -> None:
+        links = [
+            ("second", "https://z.example/source"),
+            ("first", "https://a.example/source"),
+            ("duplicate", "https://a.example/source"),
+        ]
+        with self.assertRaises(converter.IngestionError) as caught:
+            converter.check_all_sources_embedded("Body without citations.", links)
+
+        self.assertEqual("missing_citations", caught.exception.category)
+        self.assertEqual(
+            "2 PDF citation destination(s) are not embedded; first missing URL: "
+            "https://a.example/source. Add an exact TEXT=URL --link for every missing citation",
+            str(caught.exception),
+        )
+
 
 class AtomicOutputTests(unittest.TestCase):
     def staging_files(self, directory: Path) -> list[Path]:
