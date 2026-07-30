@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import re
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from typing import Iterable
@@ -13,6 +14,12 @@ ROOT = Path(__file__).resolve().parents[1]
 TESTS = ROOT / "tests"
 _DURATION_LINE = re.compile(r"(?m)^Ran (\d+) (test(?:s)?) in [^\r\n]+$")
 _ADDRESS = re.compile(r"\bat 0x[0-9a-fA-F]+\b")
+# TemporaryDirectory permits caller-selected prefixes, so match one generated
+# root component below the platform temp directory rather than enumerating the
+# fixture and build prefixes used today.
+_TEMPORARY_ROOT = re.compile(
+    re.escape(tempfile.gettempdir()) + r"[/\\][A-Za-z0-9_.-]+"
+)
 
 
 def _cases(suite: unittest.TestSuite) -> Iterable[unittest.TestCase]:
@@ -30,8 +37,13 @@ def ordered_suite(suite: unittest.TestSuite) -> unittest.TestSuite:
 
 
 def normalize_report(report: str) -> str:
-    """Remove values that depend on runtime or checkout location."""
+    """Remove values that depend on runtime or checkout location.
+
+    Only the randomized temporary root is replaced. Any path below it is kept,
+    so a failure still identifies an actionable fixture or generated file.
+    """
     report = report.replace("\r\n", "\n").replace(str(ROOT), "<repo>")
+    report = _TEMPORARY_ROOT.sub("<temp>", report)
     report = _DURATION_LINE.sub(r"Ran \1 \2", report)
     return _ADDRESS.sub("at <address>", report)
 

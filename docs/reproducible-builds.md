@@ -28,8 +28,10 @@ explained in [preservation-baselines.md](preservation-baselines.md).
   byte differs.
 - `make validate` runs the complete offline test and preservation suite through
   `scripts/run_validation.py`. The runner globally sorts test IDs and normalizes
-  checkout paths, object addresses, line endings, and unittest elapsed time so
-  repeated successful or failing runs produce the same actionable report.
+  checkout paths, randomized temporary fixture/build roots, object addresses,
+  line endings, and unittest elapsed time so repeated successful or failing runs
+  produce the same actionable report. Paths below a temporary root are retained
+  (for example, `<temp>/fixtures/article.txt`) to keep diagnostics useful.
 
 GitHub Pages uses the same build script after validation rather than maintaining
 a second set of Hugo flags.
