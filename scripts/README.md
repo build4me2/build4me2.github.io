@@ -25,9 +25,13 @@ file descriptor opened during validation (PDF tools share one private validated
 snapshot), so replacing the input pathname cannot change extraction. Output
 parents are opened component-by-component without following links and retained
 through installation; staging, verification, linking, and cleanup are all
-performed relative to that bound directory descriptor. Any failure removes the
-staging file; a destination created concurrently or already present remains
-unchanged, and replacing an output parent pathname cannot redirect the post.
+performed relative to that bound directory descriptor. Every failure attempts
+to remove the staging file; a destination created concurrently or already
+present remains unchanged, and replacing an output parent pathname cannot
+redirect the post. A staging-unlink failure is never suppressed: it returns the
+stable `ERROR[output_cleanup]` category. If unlink fails after atomic installation, the
+new destination link is rolled back before the failure is reported; if rollback
+itself fails, that is included explicitly in the diagnostic for operator repair.
 
 ## Extraction failure policy
 

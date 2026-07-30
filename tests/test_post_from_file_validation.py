@@ -184,6 +184,48 @@ class AtomicOutputTests(unittest.TestCase):
             self.assertFalse(output.exists())
             self.assertEqual([], self.staging_files(root))
 
+    @mock.patch.object(converter, "_validate_staged_post")
+    def test_pre_commit_cleanup_failure_is_explicit_and_does_not_publish(self, validate) -> None:
+        validate.side_effect = converter.IngestionError("output_write", "invalid staged post")
+        real_unlink = converter.os.unlink
+
+        def reject_staging(name, *, dir_fd=None):
+            if str(name).endswith(".tmp"):
+                raise OSError(5, "controlled cleanup failure")
+            return real_unlink(name, dir_fd=dir_fd)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            output = root / "post.md"
+            with mock.patch.object(converter.os, "unlink", side_effect=reject_staging):
+                with self.assertRaises(converter.IngestionError) as caught:
+                    converter._atomic_create_post(output, "complete post\n")
+
+            self.assertEqual("output_cleanup", caught.exception.category)
+            self.assertIn("cannot remove staged output: controlled cleanup failure", str(caught.exception))
+            self.assertFalse(output.exists())
+            self.assertEqual(1, len(self.staging_files(root)))
+
+    def test_post_commit_cleanup_failure_rolls_back_and_is_explicit(self) -> None:
+        real_unlink = converter.os.unlink
+
+        def reject_staging(name, *, dir_fd=None):
+            if str(name).endswith(".tmp"):
+                raise OSError(5, "controlled cleanup failure")
+            return real_unlink(name, dir_fd=dir_fd)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            output = root / "post.md"
+            with mock.patch.object(converter.os, "unlink", side_effect=reject_staging):
+                with self.assertRaises(converter.IngestionError) as caught:
+                    converter._atomic_create_post(output, "complete post\n")
+
+            self.assertEqual("output_cleanup", caught.exception.category)
+            self.assertIn("installed output was rolled back", str(caught.exception))
+            self.assertFalse(output.exists())
+            self.assertEqual(1, len(self.staging_files(root)))
+
 
 class MetadataAndOutputValidationTests(unittest.TestCase):
     def assert_category(self, category: str, action) -> None:

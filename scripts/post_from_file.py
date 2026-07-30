@@ -701,6 +701,8 @@ def _atomic_create_post(output: Path | OutputTarget, post: str) -> None:
     expected = post.encode("utf-8")
     temporary_name: str | None = None
     descriptor = -1
+    installed = False
+    operation_error: BaseException | None = None
     try:
         for _ in range(100):
             temporary_name = f".{target.name}.{secrets.token_hex(12)}.tmp"
@@ -752,16 +754,52 @@ def _atomic_create_post(output: Path | OutputTarget, post: str) -> None:
             raise IngestionError(
                 "output_write", f"cannot install output atomically: {exc.strerror or exc}"
             ) from None
+        installed = True
+    except BaseException as exc:
+        operation_error = exc
     finally:
         if descriptor >= 0:
-            os.close(descriptor)
-        if temporary_name is not None:
             try:
-                os.unlink(temporary_name, dir_fd=target.parent_descriptor)
-            except FileNotFoundError:
-                pass
+                os.close(descriptor)
             except OSError:
+                # Closing an already flushed and validated descriptor does not
+                # alter the installed bytes. Cleanup below must still run.
                 pass
+
+    cleanup_error: OSError | None = None
+    rollback_error: OSError | None = None
+    if temporary_name is not None:
+        try:
+            os.unlink(temporary_name, dir_fd=target.parent_descriptor)
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            cleanup_error = exc
+
+    # A successful link is not reported as a successful transaction until its
+    # staging name is gone. If that cleanup fails, remove only the destination
+    # hard link created by this invocation so callers never receive failure with
+    # a newly publishable post in place.
+    if cleanup_error is not None and installed:
+        try:
+            os.unlink(target.name, dir_fd=target.parent_descriptor)
+        except OSError as exc:
+            rollback_error = exc
+
+    try:
+        if cleanup_error is not None:
+            detail = cleanup_error.strerror or str(cleanup_error)
+            message = f"cannot remove staged output: {detail}"
+            if installed:
+                if rollback_error is None:
+                    message += "; installed output was rolled back"
+                else:
+                    rollback_detail = rollback_error.strerror or str(rollback_error)
+                    message += f"; cannot roll back installed output: {rollback_detail}"
+            raise IngestionError("output_cleanup", message) from operation_error
+        if operation_error is not None:
+            raise operation_error
+    finally:
         if owns_target:
             target.close()
 
