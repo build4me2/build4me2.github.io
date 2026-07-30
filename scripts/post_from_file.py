@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import shutil
 import stat
 import subprocess
 import sys
@@ -33,6 +34,9 @@ SUPPORTED_INPUT_SUFFIXES = frozenset({".pdf", ".txt"})
 MAX_INPUT_BYTES = 25 * 1024 * 1024
 MAX_TITLE_LENGTH = 300
 MAX_SLUG_LENGTH = 100
+PDF_TOOL_TIMEOUT_SECONDS = 30
+MAX_TOOL_DIAGNOSTIC_CHARS = 1000
+MIN_PDF_TEXT_CHARACTERS_PER_PAGE = 20
 SLUG_PATTERN = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 
 
@@ -110,7 +114,7 @@ def validate_input(path: Path, max_bytes: int = MAX_INPUT_BYTES) -> Path:
             opened = os.fstat(stream.fileno())
             if not stat.S_ISREG(opened.st_mode) or (opened.st_dev, opened.st_ino) != (info.st_dev, info.st_ino):
                 raise IngestionError("unsafe_input", "input changed while it was being validated")
-            head = stream.read(4096)
+            head = stream.read()
     except IngestionError:
         raise
     except OSError as exc:
@@ -123,11 +127,13 @@ def validate_input(path: Path, max_bytes: int = MAX_INPUT_BYTES) -> Path:
         if is_pdf:
             raise IngestionError("misleading_input", "a PDF document must not use a .txt extension")
         if b"\x00" in head:
-            raise IngestionError("misleading_input", "a .txt input must contain text, not binary data")
+            raise IngestionError("encoding_error", "TXT input contains NUL bytes")
         try:
-            head.decode("utf-8")
-        except UnicodeDecodeError:
-            raise IngestionError("misleading_input", "a .txt input must be UTF-8 encoded") from None
+            head.decode("utf-8-sig", errors="strict")
+        except UnicodeDecodeError as exc:
+            raise IngestionError(
+                "encoding_error", f"TXT input is not strict UTF-8 at byte {exc.start}"
+            ) from None
     return path
 
 
@@ -208,19 +214,110 @@ def validate_output(path: Path, posts_dir: Path = POSTS_DIR) -> Path:
     return candidate
 
 
-def read_input(path: Path) -> str:
-    if path.suffix.lower() == ".pdf":
-        try:
-            # -layout helps detect paragraph/page-footnote structure.
-            return subprocess.check_output(["pdftotext", "-layout", str(path), "-"], text=True)
-        except FileNotFoundError:
-            raise IngestionError("missing_tool", "pdftotext is required; install poppler-utils") from None
+def _diagnostic(stderr: bytes | str) -> str:
+    """Return a bounded, single-line tool diagnostic that is safe for the CLI."""
+    detail = stderr if isinstance(stderr, str) else stderr.decode("utf-8", errors="replace")
+    detail = detail.replace("\x00", "�")
+    detail = " ".join(detail.split())
+    if not detail:
+        return "no diagnostic output"
+    if len(detail) > MAX_TOOL_DIAGNOSTIC_CHARS:
+        return detail[:MAX_TOOL_DIAGNOSTIC_CHARS] + "…"
+    return detail
+
+
+def _run_pdf_tool(tool: str, arguments: list[str]) -> bytes:
+    """Run one required Poppler tool with bounded resources and diagnostics."""
+    executable = shutil.which(tool)
+    if executable is None:
+        raise IngestionError("missing_tool", f"required PDF tool '{tool}' was not found; install poppler-utils")
     try:
-        return path.read_text(encoding="utf-8")
-    except UnicodeError as exc:
-        raise IngestionError("extraction", f"input is not valid UTF-8: {exc}") from None
+        result = subprocess.run(
+            [executable, *arguments],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=PDF_TOOL_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        detail = _diagnostic(exc.stderr or b"")
+        raise IngestionError(
+            "tool_timeout",
+            f"{tool} exceeded the {PDF_TOOL_TIMEOUT_SECONDS}-second timeout ({detail})",
+        ) from None
+    except OSError as exc:
+        raise IngestionError("tool_failed", f"could not execute {tool}: {exc.strerror or exc}") from None
+    if result.returncode != 0:
+        raise IngestionError(
+            "tool_failed",
+            f"{tool} exited with status {result.returncode}: {_diagnostic(result.stderr)}",
+        )
+    return result.stdout
+
+
+def _decode_tool_output(tool: str, output: bytes) -> str:
+    try:
+        return output.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise IngestionError(
+            "encoding_error", f"{tool} produced non-UTF-8 output at byte {exc.start}"
+        ) from None
+
+
+def _pdf_page_count(path: Path) -> int:
+    try:
+        raw_info = _run_pdf_tool("pdfinfo", ["-enc", "UTF-8", str(path)])
+    except IngestionError as exc:
+        if exc.category == "tool_failed":
+            raise IngestionError("corrupt_pdf", f"pdfinfo could not read the PDF: {exc}") from None
+        raise
+    info = _decode_tool_output("pdfinfo", raw_info)
+    match = re.search(r"(?m)^Pages:\s*(\d+)\s*$", info)
+    if match is None or int(match.group(1)) < 1:
+        raise IngestionError("corrupt_pdf", "pdfinfo did not report a positive page count")
+    return int(match.group(1))
+
+
+def _read_utf8_text(path: Path) -> str:
+    try:
+        data = path.read_bytes()
     except OSError as exc:
         raise IngestionError("extraction", f"cannot read input: {exc.strerror or exc}") from None
+    if b"\x00" in data:
+        raise IngestionError("encoding_error", "TXT input contains NUL bytes")
+    try:
+        # A UTF-8 BOM is accepted and removed. No locale fallback or lossy error
+        # handling is allowed.
+        return data.decode("utf-8-sig", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise IngestionError(
+            "encoding_error", f"TXT input is not strict UTF-8 at byte {exc.start}"
+        ) from None
+
+
+def read_input(path: Path) -> str:
+    if path.suffix.lower() != ".pdf":
+        return _read_utf8_text(path)
+
+    pages = _pdf_page_count(path)
+    output = _run_pdf_tool("pdftotext", ["-layout", "-enc", "UTF-8", str(path), "-"])
+    text = _decode_tool_output("pdftotext", output)
+    visible_characters = len(re.findall(r"[^\s\x0c]", text))
+    if visible_characters == 0:
+        raise IngestionError("empty_extraction", "pdftotext extracted no visible text")
+
+    # Poppler terminates each extracted page with form feed. A mismatch means
+    # stdout was truncated despite a successful process exit. Sparse output is
+    # normally an image-only or damaged PDF and must be reviewed/OCRed first.
+    extracted_pages = text.count("\x0c")
+    if (pages > 1 and extracted_pages < pages) or (
+        visible_characters < pages * MIN_PDF_TEXT_CHARACTERS_PER_PAGE
+    ):
+        raise IngestionError(
+            "partial_extraction",
+            f"pdftotext output appears incomplete ({visible_characters} visible characters for {pages} pages)",
+        )
+    return text
 
 
 def extract_pdf_links(path: Path) -> list[tuple[str, str]]:
@@ -231,22 +328,34 @@ def extract_pdf_links(path: Path) -> list[tuple[str, str]]:
     """
     if path.suffix.lower() != ".pdf":
         return []
-    try:
-        html = subprocess.check_output(
-            ["pdftohtml", "-stdout", "-i", "-noframes", str(path)], text=True, errors="ignore",
-            stderr=subprocess.DEVNULL,
-        )
-    except FileNotFoundError:
-        print("WARNING: pdftohtml not found (install poppler-utils); cannot recover PDF hyperlinks.")
-        return []
     import html as html_mod
 
+    annotation_report = _decode_tool_output(
+        "pdfinfo", _run_pdf_tool("pdfinfo", ["-url", "-enc", "UTF-8", str(path)])
+    )
+    expected_urls = set(re.findall(r"https?://\S+", annotation_report))
+    html = _decode_tool_output(
+        "pdftohtml",
+        _run_pdf_tool(
+            "pdftohtml", ["-stdout", "-i", "-noframes", "-enc", "UTF-8", str(path)]
+        ),
+    )
+
     links: list[tuple[str, str]] = []
-    for match in re.finditer(r'<a href="(https?://[^"]*)">(.*?)</a>', html, re.S):
-        label = html_mod.unescape(re.sub(r"<[^>]+>", "", match.group(2)))
+    anchor_pattern = r"<a\b[^>]*\bhref=([\"'])(https?://.*?)\1[^>]*>(.*?)</a>"
+    for match in re.finditer(anchor_pattern, html, re.I | re.S):
+        url = html_mod.unescape(match.group(2))
+        label = html_mod.unescape(re.sub(r"<[^>]+>", "", match.group(3)))
         label = re.sub(r"\s+", " ", label).replace("​", "").strip()
         if label:
-            links.append((label, match.group(1)))
+            links.append((label, url))
+    recovered_urls = {url for _, url in links}
+    missing = sorted(expected_urls - recovered_urls)
+    if missing:
+        raise IngestionError(
+            "missing_annotations",
+            f"pdftohtml omitted {len(missing)} URL annotation(s); first missing URL: {missing[0]}",
+        )
     return links
 
 
@@ -481,13 +590,17 @@ def run(argv: Sequence[str] | None = None) -> Path:
         if "=" not in item or not all(part.strip() for part in item.split("=", 1)):
             raise IngestionError("invalid_link", "--link must use non-empty TEXT=URL values")
 
-    pdf_links = extract_pdf_links(input_path)
+    # Validate and extract page text before attempting annotation recovery so a
+    # structurally corrupt PDF receives the stable corrupt_pdf diagnostic.
     raw_text = read_input(input_path)
+    pdf_links = extract_pdf_links(input_path)
     body = parse_body(raw_text, title, args.keep_references)
     body = fix_extraction_artifacts(body)
     body = embed_footnote_links(body, footnote_url_map(pdf_links, raw_text))
     body = embed_links(body, args.link)
     body = "\n\n".join(p.strip() for p in body.split("\n\n") if p.strip())
+    if not body:
+        raise IngestionError("empty_extraction", "extraction produced no publishable body text")
     check_all_sources_embedded(body, pdf_links)
 
     try:

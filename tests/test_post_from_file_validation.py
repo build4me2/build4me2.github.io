@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location("post_from_file", ROOT / "scripts/post_from_file.py")
@@ -44,6 +46,20 @@ class InputValidationTests(unittest.TestCase):
         link.symlink_to(target)
         self.assert_category("unsafe_input", lambda: converter.validate_input(link))
 
+    def test_rejects_invalid_utf8_and_nul_anywhere_in_text(self) -> None:
+        malformed = self.root / "malformed.txt"
+        malformed.write_bytes(b"valid prefix\n" + b"x" * 5000 + b"\xff")
+        self.assert_category("encoding_error", lambda: converter.validate_input(malformed))
+        nul = self.root / "nul.txt"
+        nul.write_bytes(b"x" * 5000 + b"\x00hidden")
+        self.assert_category("encoding_error", lambda: converter.validate_input(nul))
+
+    def test_accepts_and_removes_utf8_bom(self) -> None:
+        source = self.root / "bom.txt"
+        source.write_bytes(b"\xef\xbb\xbfBody text")
+        converter.validate_input(source)
+        self.assertEqual("Body text", converter.read_input(source))
+
     def test_rejects_misleading_and_oversized_inputs(self) -> None:
         fake_pdf = self.root / "fake.pdf"
         fake_pdf.write_text("not pdf", encoding="utf-8")
@@ -54,6 +70,49 @@ class InputValidationTests(unittest.TestCase):
         large = self.root / "large.txt"
         large.write_bytes(b"1234")
         self.assert_category("input_too_large", lambda: converter.validate_input(large, max_bytes=3))
+
+
+class PdfExtractionFailureTests(unittest.TestCase):
+    def assert_category(self, category: str, action) -> None:
+        with self.assertRaises(converter.IngestionError) as caught:
+            action()
+        self.assertEqual(category, caught.exception.category)
+
+    @mock.patch.object(converter.shutil, "which", return_value=None)
+    def test_required_tool_must_exist(self, _which) -> None:
+        self.assert_category("missing_tool", lambda: converter._run_pdf_tool("pdftotext", []))
+
+    @mock.patch.object(converter.shutil, "which", return_value="/usr/bin/pdftotext")
+    @mock.patch.object(converter.subprocess, "run")
+    def test_tool_timeout_and_nonzero_exit_are_explicit(self, run, _which) -> None:
+        run.side_effect = subprocess.TimeoutExpired("pdftotext", 30, stderr=b"stalled")
+        self.assert_category("tool_timeout", lambda: converter._run_pdf_tool("pdftotext", []))
+        run.side_effect = None
+        run.return_value = subprocess.CompletedProcess([], 7, b"", b"broken object")
+        self.assert_category("tool_failed", lambda: converter._run_pdf_tool("pdftotext", []))
+
+    @mock.patch.object(converter, "_run_pdf_tool")
+    def test_unreadable_pdf_is_reported_as_corrupt(self, tool) -> None:
+        tool.side_effect = converter.IngestionError("tool_failed", "pdfinfo exited with status 1")
+        self.assert_category("corrupt_pdf", lambda: converter.read_input(Path("paper.pdf")))
+
+    @mock.patch.object(converter, "_run_pdf_tool")
+    def test_empty_and_partial_pdf_text_are_blocked(self, tool) -> None:
+        source = Path("paper.pdf")
+        tool.side_effect = [b"Pages: 1\n", b" \n\x0c"]
+        self.assert_category("empty_extraction", lambda: converter.read_input(source))
+        tool.side_effect = [b"Pages: 3\n", b"This is only one extracted page.\x0c"]
+        self.assert_category("partial_extraction", lambda: converter.read_input(source))
+
+    @mock.patch.object(converter, "_run_pdf_tool")
+    def test_missing_pdf_url_annotations_are_blocked(self, tool) -> None:
+        tool.side_effect = [
+            b"Page Type URL\n1 Annotation https://example.com/source\n",
+            b"<html><body>No link recovered</body></html>",
+        ]
+        self.assert_category(
+            "missing_annotations", lambda: converter.extract_pdf_links(Path("paper.pdf"))
+        )
 
 
 class MetadataAndOutputValidationTests(unittest.TestCase):

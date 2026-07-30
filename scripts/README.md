@@ -19,6 +19,22 @@ and slugs use only lowercase ASCII letters, digits, and single hyphens. Explicit
 are never overwritten. Validation failures use stable `ERROR[category]: ...`
 diagnostics, return nonzero, and do not create an output file.
 
+## Extraction failure policy
+
+TXT input is decoded as strict UTF-8 (an optional UTF-8 BOM is removed). The
+converter never uses the system locale, guesses another encoding, or replaces
+invalid bytes. UTF-16/UTF-32 and other encodings, malformed UTF-8, and NUL bytes
+therefore fail with `ERROR[encoding_error]`.
+
+PDF ingestion requires `pdfinfo`, `pdftotext`, and `pdftohtml` from
+`poppler-utils`. Each executable is checked explicitly and each invocation has
+a 30-second timeout with captured, bounded diagnostics. A missing executable,
+nonzero exit (including corrupt/encrypted PDFs), timeout, non-UTF-8 tool output,
+empty text, an implausibly sparse/truncated page extraction, or URL annotations
+reported by `pdfinfo` but absent from `pdftohtml` is a blocking error. These
+checks happen before the destination is created; do not bypass them—OCR or
+repair the source document instead.
+
 Examples:
 
 ```bash
