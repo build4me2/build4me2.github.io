@@ -173,6 +173,169 @@ def fail(errors: list[str], message: str) -> None:
     errors.append(message)
 
 
+def json_type(value: Any) -> str:
+    """Return JSON terminology rather than Python implementation types."""
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, dict):
+        return "object"
+    if isinstance(value, list):
+        return "array"
+    if isinstance(value, str):
+        return "string"
+    if isinstance(value, (int, float)):
+        return "number"
+    return type(value).__name__
+
+
+def validate_baseline_schema(baseline: Any) -> list[str]:
+    """Validate every field consumed by the preservation checks.
+
+    Paths and findings are sorted so a damaged fixture has the same diagnostic on
+    every machine.  Callers must not use the fixture when this returns findings.
+    """
+    errors: list[str] = []
+
+    def expect_object(value: Any, path: str) -> dict[str, Any] | None:
+        if not isinstance(value, dict):
+            fail(errors, f"{path}: expected object, got {json_type(value)}")
+            return None
+        return value
+
+    def field(obj: dict[str, Any], path: str, name: str, expected: type) -> Any | None:
+        child_path = f"{path}.{name}"
+        if name not in obj:
+            fail(errors, f"{child_path}: missing required field")
+            return None
+        value = obj[name]
+        # bool is an int in Python; schema types must remain exact.
+        valid = isinstance(value, expected) and not (expected is int and isinstance(value, bool))
+        if not valid:
+            expected_name = {dict: "object", list: "array", str: "string", bool: "boolean"}.get(
+                expected, expected.__name__
+            )
+            fail(errors, f"{child_path}: expected {expected_name}, got {json_type(value)}")
+            return None
+        return value
+
+    def string_field(obj: dict[str, Any], path: str, name: str) -> str | None:
+        value = field(obj, path, name, str)
+        if isinstance(value, str) and not value:
+            fail(errors, f"{path}.{name}: must not be empty")
+            return None
+        return value
+
+    def string_array(obj: dict[str, Any], path: str, name: str) -> list[str] | None:
+        value = field(obj, path, name, list)
+        if not isinstance(value, list):
+            return None
+        for index, item in enumerate(value):
+            if not isinstance(item, str):
+                fail(errors, f"{path}.{name}[{index}]: expected string, got {json_type(item)}")
+            elif not item:
+                fail(errors, f"{path}.{name}[{index}]: must not be empty")
+        return value
+
+    root = expect_object(baseline, "$")
+    if root is None:
+        return sorted(set(errors))
+
+    schema = string_field(root, "$", "schema")
+    if schema is not None and schema != "hugo-preservation-baseline/v1":
+        fail(errors, f"$.schema: unsupported value {schema!r}; expected 'hugo-preservation-baseline/v1'")
+    string_field(root, "$", "capturedFrom")
+    policy = field(root, "$", "policy", dict)
+    if isinstance(policy, dict):
+        for name in ("purpose", "approvedReconciliation", "prohibitedChanges"):
+            string_field(policy, "$.policy", name)
+
+    paper_commit = string_field(root, "$", "paperModCommit")
+    if paper_commit is not None and not re.fullmatch(r"[0-9a-f]{40}", paper_commit):
+        fail(errors, "$.paperModCommit: expected a 40-character lowercase hexadecimal commit")
+
+    file_sets = field(root, "$", "presentationFileSets", dict)
+    if isinstance(file_sets, dict):
+        for name in sorted(PRESENTATION_ROOTS):
+            string_array(file_sets, "$.presentationFileSets", name)
+
+    protected = field(root, "$", "protectedFiles", dict)
+    if isinstance(protected, dict):
+        for relative in sorted(protected, key=str):
+            path = f"$.protectedFiles[{relative!r}]"
+            if not isinstance(relative, str) or not relative:
+                fail(errors, f"{path}: file name must be a non-empty string")
+            value = protected[relative]
+            if not isinstance(value, str):
+                fail(errors, f"{path}: expected string, got {json_type(value)}")
+            elif not re.fullmatch(r"[0-9a-f]{64}", value):
+                fail(errors, f"{path}: expected a 64-character lowercase hexadecimal SHA-256")
+
+    configuration = field(root, "$", "hugoConfiguration", dict)
+    if isinstance(configuration, dict):
+        for dotted in sorted(configuration, key=str):
+            if not isinstance(dotted, str) or not dotted or any(not part for part in dotted.split(".")):
+                fail(errors, f"$.hugoConfiguration[{dotted!r}]: setting name must be a valid dotted string")
+            value = configuration[dotted]
+            if value is None or isinstance(value, (dict, list)):
+                fail(errors, f"$.hugoConfiguration[{dotted!r}]: expected scalar, got {json_type(value)}")
+
+    listing = field(root, "$", "homeListing", list)
+    if isinstance(listing, list):
+        if len(listing) != 4:
+            fail(errors, f"$.homeListing: expected exactly 4 established entries, got {len(listing)}")
+        for index, item in enumerate(listing):
+            path = f"$.homeListing[{index}]"
+            obj = expect_object(item, path)
+            if obj is not None:
+                for name in ("route", "title", "date"):
+                    string_field(obj, path, name)
+
+    articles = field(root, "$", "articles", list)
+    if isinstance(articles, list):
+        if len(articles) != 4:
+            fail(errors, f"$.articles: expected exactly 4 established entries, got {len(articles)}")
+        for index, item in enumerate(articles):
+            path = f"$.articles[{index}]"
+            obj = expect_object(item, path)
+            if obj is None:
+                continue
+            for name in (
+                "source", "route", "proseSha256", "renderedProseSha256",
+                "renderedStructureSha256",
+            ):
+                value = string_field(obj, path, name)
+                if name.endswith("Sha256") and value is not None and not re.fullmatch(r"[0-9a-f]{64}", value):
+                    fail(errors, f"{path}.{name}: expected a 64-character lowercase hexadecimal SHA-256")
+            front_matter = field(obj, path, "frontMatter", dict)
+            if isinstance(front_matter, dict):
+                front_path = f"{path}.frontMatter"
+                for name in ("title", "date", "slug"):
+                    string_field(front_matter, front_path, name)
+                for name in ("draft", "hideSummary", "ShowToc"):
+                    field(front_matter, front_path, name, bool)
+            string_array(obj, path, "citationDestinations")
+            segments = string_array(obj, path, "proseSegmentSha256")
+            if isinstance(segments, list):
+                for segment_index, value in enumerate(segments):
+                    if isinstance(value, str) and not re.fullmatch(r"[0-9a-f]{64}", value):
+                        fail(
+                            errors,
+                            f"{path}.proseSegmentSha256[{segment_index}]: expected a 64-character lowercase hexadecimal SHA-256",
+                        )
+
+    rendered = field(root, "$", "renderedContract", dict)
+    if isinstance(rendered, dict):
+        for name in ("homeMarkers", "articleMarkers", "siteMarkers"):
+            string_array(rendered, "$.renderedContract", name)
+        home_hash = string_field(rendered, "$.renderedContract", "homeStructureSha256")
+        if home_hash is not None and not re.fullmatch(r"[0-9a-f]{64}", home_hash):
+            fail(errors, "$.renderedContract.homeStructureSha256: expected a 64-character lowercase hexadecimal SHA-256")
+
+    return sorted(set(errors))
+
+
 def validate_presentation_file_sets(baseline: dict[str, Any], errors: list[str]) -> None:
     """Reject additions and removals as well as edits to known presentation files."""
     inventory = baseline.get("presentationFileSets", {})
@@ -300,12 +463,24 @@ def validate_rendered(baseline: dict[str, Any], destination: Path, errors: list[
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source-only", action="store_true", help="skip the Hugo render checks")
+    parser.add_argument(
+        "--baseline", type=Path, default=BASELINE_PATH, metavar="PATH",
+        help=argparse.SUPPRESS,
+    )
     args = parser.parse_args()
     try:
-        baseline = json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
+        baseline = json.loads(args.baseline.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         print(f"Preservation baseline cannot be read: {type(exc).__name__}", file=sys.stderr)
         return 1
+    schema_errors = validate_baseline_schema(baseline)
+    if schema_errors:
+        print("Preservation baseline schema is invalid:", file=sys.stderr)
+        for error in schema_errors:
+            print(f"- {error}", file=sys.stderr)
+        print("Fix tests/baselines/preservation.json before running preservation checks.", file=sys.stderr)
+        return 1
+
     errors: list[str] = []
     validate_sources(baseline, errors)
 

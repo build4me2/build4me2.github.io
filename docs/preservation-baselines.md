@@ -22,7 +22,7 @@ Use `--source-only` only when Hugo is unavailable. The full check builds with an
 - complete, sorted file inventories and hashes for local layouts and extended CSS, including header, footer, listing, citation, and theme-toggle overrides (new override files are rejected);
 - behavior-relevant Hugo settings (including `defaultTheme = "auto"`) and the PaperMod gitlink commit.
 
-The validator fails with a focused diagnostic when any protected value changes. It does not access the network and uses only Python's standard library, Git, and the locally installed Hugo executable.
+The validator checks the baseline schema before reading any fixture values. Missing fields, incorrect JSON types, malformed hashes, and an incorrect established-entry count fail with sorted JSON-path diagnostics and no traceback. It then fails with a focused diagnostic when any protected value changes. It does not access the network and uses only Python's standard library, Git, and the locally installed Hugo executable.
 
 ## Change policy
 

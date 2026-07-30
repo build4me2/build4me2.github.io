@@ -23,6 +23,7 @@ SPEC.loader.exec_module(validator)
 class SourcePreservationTests(unittest.TestCase):
     def test_committed_sources_match_paragraph_inventory(self) -> None:
         baseline = json.loads((ROOT / "tests/baselines/preservation.json").read_text(encoding="utf-8"))
+        self.assertEqual(validator.validate_baseline_schema(baseline), [])
         errors: list[str] = []
         validator.validate_sources(baseline, errors)
         self.assertEqual(errors, [])
@@ -143,6 +144,48 @@ class RenderedPreservationTests(unittest.TestCase):
 
 
 class CliTests(unittest.TestCase):
+    def test_malformed_baseline_reports_sorted_schema_errors_without_traceback(self) -> None:
+        malformed = {
+            "schema": "hugo-preservation-baseline/v1",
+            "paperModCommit": 42,
+            "presentationFileSets": {"extendedCss": "not-an-array"},
+            "protectedFiles": [],
+            "hugoConfiguration": {},
+            "homeListing": [{"route": "/example/", "title": False}],
+            "articles": [{"source": "content/posts/example.md", "route": []}],
+            "renderedContract": None,
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            baseline_path = Path(temporary) / "malformed.json"
+            baseline_path.write_text(json.dumps(malformed), encoding="utf-8")
+            result = subprocess.run(
+                [
+                    "python3", "scripts/validate_preservation_baseline.py", "--source-only",
+                    "--baseline", str(baseline_path),
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                timeout=30,
+            )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stdout, "")
+        self.assertNotIn("Traceback", result.stderr)
+        self.assertTrue(result.stderr.startswith("Preservation baseline schema is invalid:\n"))
+        findings = result.stderr.splitlines()[1:-1]
+        self.assertEqual(findings, sorted(set(findings)))
+        self.assertIn("- $.articles[0].frontMatter: missing required field", findings)
+        self.assertIn("- $.homeListing[0].date: missing required field", findings)
+        self.assertIn("- $.paperModCommit: expected string, got number", findings)
+        self.assertIn("- $.renderedContract: expected object, got null", findings)
+
+    def test_non_object_baseline_has_actionable_diagnostic(self) -> None:
+        self.assertEqual(
+            validator.validate_baseline_schema([]),
+            ["$: expected object, got array"],
+        )
+
     def test_source_only_cli_is_network_free_and_successful(self) -> None:
         result = subprocess.run(
             ["python3", "scripts/validate_preservation_baseline.py", "--source-only"],
