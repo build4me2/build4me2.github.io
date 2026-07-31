@@ -12,6 +12,11 @@ from typing import Iterable
 
 ROOT = Path(__file__).resolve().parents[1]
 TESTS = ROOT / "tests"
+# Executing this file by path puts scripts/, not the repository root, first on
+# sys.path.  Discovery must provide the same import environment as running from
+# the repository root so tests can import the scripts namespace.
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 _DURATION_LINE = re.compile(r"(?m)^Ran (\d+) (test(?:s)?) in [^\r\n]+$")
 _ADDRESS = re.compile(r"\bat 0x[0-9a-fA-F]+\b")
 # TemporaryDirectory permits caller-selected prefixes, so match one generated

@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import re
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -41,7 +41,7 @@ def failing_suite() -> unittest.TestSuite:
 
 
 def run_validation_command(root: Path, *, fail: bool) -> subprocess.CompletedProcess[str]:
-    """Run the real validation CLI against an isolated deterministic fixture."""
+    """Run the documented make entrypoint against an isolated repository."""
     scripts = root / "scripts"
     tests = root / "tests"
     scripts.mkdir()
@@ -49,17 +49,25 @@ def run_validation_command(root: Path, *, fail: bool) -> subprocess.CompletedPro
     (scripts / "run_validation.py").write_bytes(
         (ROOT / "scripts" / "run_validation.py").read_bytes()
     )
+    (scripts / "command_fixture.py").write_text("VALUE = 'scripts namespace imported'\n", encoding="utf-8")
+    (root / "Makefile").write_text(
+        ".PHONY: validate\n\nvalidate:\n\tpython3 scripts/run_validation.py\n",
+        encoding="utf-8",
+    )
     assertion = 'self.fail("stable command diagnostic")' if fail else "self.assertTrue(True)"
     (tests / "test_command_fixture.py").write_text(
-        "import unittest\n\n"
+        "import unittest\n"
+        "from scripts import command_fixture\n\n"
         "class CommandFixture(unittest.TestCase):\n"
         "    def test_report(self):\n"
+        "        self.assertEqual(command_fixture.VALUE, 'scripts namespace imported')\n"
         f"        {assertion}\n",
         encoding="utf-8",
     )
     return subprocess.run(
-        [sys.executable, "scripts/run_validation.py"],
+        ["make", "validate"],
         cwd=root,
+        env={key: value for key, value in os.environ.items() if key != "MAKELEVEL"},
         text=True,
         capture_output=True,
         check=False,
@@ -106,8 +114,10 @@ class DeterministicValidationRunnerTests(unittest.TestCase):
             first = run_validation_command(Path(first_root), fail=True)
             second = run_validation_command(Path(second_root), fail=True)
 
-        self.assertEqual(first.returncode, 1)
-        self.assertEqual(second.returncode, 1)
+        # GNU make reports a failed recipe as 2 after preserving the runner's
+        # normalized failure report on stdout.
+        self.assertEqual(first.returncode, 2)
+        self.assertEqual(second.returncode, 2)
         self.assertEqual(first.stdout, second.stdout)
         self.assertEqual(first.stderr, second.stderr)
         self.assertIn("stable command diagnostic", first.stdout)
