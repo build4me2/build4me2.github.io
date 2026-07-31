@@ -19,6 +19,19 @@
       ]
     },
     {
+      "id": "monochrome-retro-editorial-design",
+      "kind": "presentation-migration",
+      "before": "8daa5220b19ec7e529d4354c77707bb882c9bce3",
+      "after": "048f7f0667e8679226c5687c28a1b07b8e3f77db",
+      "reason": "Adopt the user-approved portfolio-inspired typography and editorial structure with a black and gray palette while preserving article content and routes.",
+      "verificationEvidence": [
+        "The reviewed design commits change only assets/css/extended/layout.css, hugo.toml navigation/theme settings, layouts/_default/list.html, and layouts/partials/extend_head.html.",
+        "Desktop, mobile, and article screenshots were inspected from a local clean Hugo render; no content/posts file changed in the design commit.",
+        "The new baseline remains independently anchored to the original content commit for prose, routes, front matter, and citation evidence."
+      ],
+      "proseArgumentRouteUnchanged": true
+    },
+    {
       "id": "code-power-lobel-2017-link",
       "kind": "citation-reconciliation",
       "article": "content/posts/code-power-and-consequences.md",

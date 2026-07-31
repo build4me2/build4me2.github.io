@@ -406,6 +406,9 @@ def validate_baseline_schema(baseline: Any) -> list[str]:
     captured_from = string_field(root, "$", "capturedFrom")
     if captured_from is not None and captured_from != CAPTURED_FROM_COMMIT:
         fail(errors, f"$.capturedFrom: expected pinned source commit {CAPTURED_FROM_COMMIT!r}")
+    presentation_from = string_field(root, "$", "presentationCapturedFrom")
+    if presentation_from is not None and not re.fullmatch(r"[0-9a-f]{40}", presentation_from):
+        fail(errors, "$.presentationCapturedFrom: expected a 40-character lowercase hexadecimal commit")
     policy = field(root, "$", "policy", dict)
     if isinstance(policy, dict):
         for name in ("purpose", "approvedReconciliation", "prohibitedChanges"):
@@ -557,10 +560,11 @@ def validate_review_records_schema(document: Any) -> list[str]:
         kind = record.get("kind")
         if kind == "baseline-capture":
             continue
-        if kind not in {"citation-reconciliation", "front-matter-reconciliation"}:
+        if kind not in {"citation-reconciliation", "front-matter-reconciliation", "presentation-migration"}:
             fail(errors, f"{path}.kind: unsupported review kind {kind!r}")
             continue
-        for name in ("article", "reason"):
+        required_text = ("reason",) if kind == "presentation-migration" else ("article", "reason")
+        for name in required_text:
             if not isinstance(record.get(name), str) or not record[name].strip():
                 fail(errors, f"{path}.{name}: expected non-empty string")
         if kind == "citation-reconciliation":
@@ -572,7 +576,7 @@ def validate_review_records_schema(document: Any) -> list[str]:
             citation_index = record.get("citationIndex")
             if not isinstance(citation_index, int) or isinstance(citation_index, bool) or citation_index < 1:
                 fail(errors, f"{path}.citationIndex: expected positive integer")
-        else:
+        elif kind == "front-matter-reconciliation":
             field_name = record.get("field")
             if field_name not in ("date", "draft", "hideSummary", "ShowToc"):
                 fail(errors, f"{path}.field: expected a reconcilable front-matter field")
@@ -584,13 +588,25 @@ def validate_review_records_schema(document: Any) -> list[str]:
                     fail(errors, f"{path}.{name}: expected {type_name}")
             if record.get("before") == record.get("after"):
                 fail(errors, f"{path}: before and after must differ")
+        else:
+            for name in ("before", "after"):
+                value = record.get(name)
+                if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{40}", value) is None:
+                    fail(errors, f"{path}.{name}: expected a 40-character lowercase hexadecimal commit")
+            if record.get("before") == record.get("after"):
+                fail(errors, f"{path}: before and after must differ")
         evidence = record.get("verificationEvidence")
         if not isinstance(evidence, list) or not evidence or not all(
             isinstance(item, str) and item.strip() for item in evidence
         ):
             fail(errors, f"{path}.verificationEvidence: expected non-empty array of non-empty strings")
-        if record.get("proseArgumentRoutePresentationUnchanged") is not True:
-            fail(errors, f"{path}.proseArgumentRoutePresentationUnchanged: expected true")
+        attestation = (
+            "proseArgumentRouteUnchanged"
+            if kind == "presentation-migration"
+            else "proseArgumentRoutePresentationUnchanged"
+        )
+        if record.get(attestation) is not True:
+            fail(errors, f"{path}.{attestation}: expected true")
     return sorted(set(errors))
 
 
@@ -692,7 +708,25 @@ def validate_preservation_history(
 ) -> None:
     """Anchor editable fixtures and current sources to the captured Git tree."""
     captured = baseline["capturedFrom"]
+    presentation_captured = baseline.get("presentationCapturedFrom", captured)
     records = review_document["records"]
+    presentation_records = [record for record in records if record.get("kind") == "presentation-migration"]
+    if presentation_captured == captured:
+        if presentation_records:
+            fail(errors, "presentation migration record is stale because presentationCapturedFrom did not change")
+    else:
+        matches = [
+            record for record in presentation_records
+            if record.get("before") == captured and record.get("after") == presentation_captured
+        ]
+        if len(matches) != 1:
+            fail(errors, "presentationCapturedFrom requires one exact presentation-migration review record")
+        ancestry = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", captured, presentation_captured],
+            cwd=ROOT, capture_output=True,
+        )
+        if ancestry.returncode:
+            fail(errors, "presentationCapturedFrom is not a descendant of capturedFrom")
     expected_listing: list[tuple[str, dict[str, str]]] = []
     consumed_front_matter_records: set[str] = set()
     consumed_citation_records: set[str] = set()
@@ -770,14 +804,14 @@ def validate_preservation_history(
     if baseline["homeListing"] != historical_listing:
         fail(errors, "home listing routes, titles, dates, or order differ from captured history")
 
-    # Presentation, configuration, and the theme gitlink are prohibited changes,
-    # so compare them directly to Git history rather than trusting editable hashes.
+    # Presentation, configuration, and the theme gitlink are anchored to the
+    # explicitly reviewed design commit rather than to editable hashes alone.
     historical_paths_result = subprocess.run(
-        ["git", "ls-tree", "-r", "--name-only", captured, "assets", "layouts"],
+        ["git", "ls-tree", "-r", "--name-only", presentation_captured, "assets", "layouts"],
         cwd=ROOT, text=True, capture_output=True,
     )
     if historical_paths_result.returncode:
-        fail(errors, f"cannot inventory presentation files at commit {captured!r}")
+        fail(errors, f"cannot inventory presentation files at commit {presentation_captured!r}")
     else:
         historical_paths = sorted(filter(None, historical_paths_result.stdout.splitlines()))
         baseline_paths = sorted(
@@ -786,17 +820,17 @@ def validate_preservation_history(
         if historical_paths != baseline_paths:
             fail(errors, "presentation file inventory differs from captured history")
         for relative in historical_paths:
-            historical = captured_file(captured, relative, errors)
+            historical = captured_file(presentation_captured, relative, errors)
             current = ROOT / relative
             if historical is not None and (not current.is_file() or current.read_bytes() != historical):
                 fail(errors, f"protected presentation differs from captured history: {relative}")
 
-    historical_config = captured_file(captured, "hugo.toml", errors)
+    historical_config = captured_file(presentation_captured, "hugo.toml", errors)
     if historical_config is not None and (ROOT / "hugo.toml").read_bytes() != historical_config:
         fail(errors, "Hugo configuration differs from captured history")
 
     gitlink = subprocess.run(
-        ["git", "ls-tree", captured, "themes/PaperMod"], cwd=ROOT,
+        ["git", "ls-tree", presentation_captured, "themes/PaperMod"], cwd=ROOT,
         text=True, capture_output=True,
     )
     fields = gitlink.stdout.split()
