@@ -204,6 +204,19 @@ body::-webkit-scrollbar { display: none; }
 
 /* Long-form article typography. */
 .post-single { max-width: 900px; margin: 0 auto; }
+.article-back { margin: 0 0 24px; }
+.article-back a {
+    display: inline-block;
+    color: var(--design-muted);
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.78rem;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-decoration: none;
+    text-transform: uppercase;
+}
+.article-back a:hover,
+.article-back a:focus-visible { color: var(--design-ink); }
 .post-header { margin: 0 0 42px; padding-bottom: 34px; border-bottom: 2px dashed var(--design-rule); }
 .post-title,
 .editorial-page-header h1 {
