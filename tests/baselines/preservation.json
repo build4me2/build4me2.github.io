@@ -29,15 +29,15 @@
   },
   "protectedFiles": {
     "assets/css/extended/citations.css": "b163323a40a903921f0909ddb7a101197ef7945e85d6ed6996a1b2ea3e4b64d0",
-    "assets/css/extended/layout.css": "f6dda22d09f1adbf83c8fe609186fd0cf76189e2976f3f613d64f0166670a91e",
-    "hugo.toml": "34163f0f7976fba98394af4da959ad5ae78b6e34812ad6f5db383a3a3e51b660",
-    "layouts/_default/list.html": "4fe24c6a3a158a038779cac5845c951edd2e1bfda09aa37eaa71ab83ede90e4b",
+    "assets/css/extended/layout.css": "02145fe03c5ae69a8f73f2174d6e153010568fb964fae125048ddeee38036355",
+    "hugo.toml": "a9d61d10a4335f70f07a0aa297499f43bb804e2cfd2cb33b86fec646f4ba0396",
+    "layouts/_default/list.html": "e68adcc0b72cfdfe6272b960333aab796ef3cc7984abaf46a4a30c0910acd767",
     "layouts/_default/single.html": "78c35ca5e3fcd6a457990f8e0dc019171fcb9810b87d88bb3b97549677d87421",
     "layouts/partials/breadcrumbs.html": "4f68e9c898f0efcb2d544b28481bc79efb3296a8dfb3d8b3c3fd9f82a1c58529",
     "layouts/partials/citations.html": "90a8d4f106f4c4f1a7aaa94ca863cd6a84ffd8786beed8c73c394ef8cf6f4ad7",
     "layouts/partials/extend_head.html": "1259d3505395de96afe5aadc9a1f1f9634576942aca6d4c04f0ea0e4e84847fc",
     "layouts/partials/extend_post_content.html": "e9a9914eba93f8a1651e3c8135afbcdbb30d6798c91f8366859bdb2474f3789f",
-    "layouts/partials/footer.html": "748aff37cf968d480991567fe814b7aab1a337d93afa83a83ab1cfa4b9ae8a3d",
+    "layouts/partials/footer.html": "f9930e3c05951e2125b99bbfb5b121af88086365c5443abca7dd39993046d153",
     "layouts/partials/header.html": "a4f20a4d84b100f3092ddb5b5a4c9403b7e1c470c6e8cae2527f744231c7d0ba",
     "layouts/shortcodes/citations.html": "9ea480d85a47e96702abab31f70aa339d90134c763e553f26dd49e84e86621db",
     "layouts/shortcodes/cite.html": "fc050edeaa709b2d544d4d70f6f7ca6393d37240b5ec429e9437ebacc4a3a52e"
@@ -109,7 +109,7 @@
         "https://cybersecurityfordemocracy.org/",
         "https://www.hrw.org/report/2023/12/21/metas-broken-promises/systemic-censorship-palestine-content-instagram-and"
       ],
-      "renderedStructureSha256": "7937e592489cee6e309c765852620aae3f0aec6e2a7a55c99855cd7133d3d0dc",
+      "renderedStructureSha256": "d72a2de8175d881fcdc0076c01e6d6aea8a7fb846d0a0baff2befd058077bc32",
       "proseSegmentSha256": [
         "288671f4893ac5889d79011802a147d3a2df80f572af3fb05238d4f4ce9a0d18",
         "e21b71b67a2a6d3f834967f636fdf7e6fcd8ae62dc1c2e264aae2c6dd4841a4f",
@@ -138,7 +138,7 @@
         "https://www.pearson.com/en-us/subject-catalog/p/gift-of-fire-social-legal-and-ethical-issues-for-computing-technology/P200000003391",
         "https://www.pearson.com/en-us/subject-catalog/p/gift-of-fire-social-legal-and-ethical-issues-for-computing-technology/P200000003391"
       ],
-      "renderedStructureSha256": "0e0270777c94f92f002a1c9f918c2f9d87d0e5f9785e0fe01b416b40cca9d07e",
+      "renderedStructureSha256": "abb6a196e833bd7bbdaa4c7cb60c9d42e3a100b27ab04ee6c6f5ec09c716e02b",
       "proseSegmentSha256": [
         "9125a6b8db99b524975438250d55affaec4be30039f996677cb4802bf6f1ff7f",
         "6b680c622c5a179962be455ff0c8a7e5fa40ebd4f5391ca20442a0c398aa2ae1",
@@ -188,7 +188,7 @@
         "https://www.congress.gov/bill/112th-congress/senate-bill/3642",
         "https://www.congress.gov/bill/114th-congress/senate-bill/1890"
       ],
-      "renderedStructureSha256": "c48835b076ca6ef99218be922779820332f1ccb9e59d69811ee9c9fad088b208",
+      "renderedStructureSha256": "262e661277058e137f64d3e779c711b837200b053a0a5cc56c332455396d068e",
       "proseSegmentSha256": [
         "73cf9aa27cece3a92414f743992a1b3bdc3e3522eebc0f9ae5b84be8b3d1ec72",
         "594add8bc068112136b4b79de500ea694d75197f9fce3527c1dd02f4cd94d2d7",
@@ -215,7 +215,7 @@
         "https://conversationswithbillkristol.org/transcript/peter-thiel-transcript/",
         "https://eng.vt.edu/magazine/stories/fall-2023/ai.html"
       ],
-      "renderedStructureSha256": "1722c36b798c7ade23a30b15f5917a549bee578e59c8712d936c07e2ca93df33",
+      "renderedStructureSha256": "3d8ad400f3adaf7f406d5cda656a46233d83e817d2f9480e616225e2ef40dd4a",
       "proseSegmentSha256": [
         "682c41070a96615ed536ba0006a07382ce31829cb845b47a33e49bbc0b9fc9ed",
         "8b79d778faf74f5791022ef3901839896359b347d027e28169fdbd0ab045f0b3",
@@ -227,9 +227,7 @@
   ],
   "renderedContract": {
     "homeMarkers": [
-      "<section.site-hero>",
-      "<h1#site-hero-title>",
-      "<h2.section-label>",
+      "<h1.section-label>",
       "<ul.paper-list>"
     ],
     "articleMarkers": [
@@ -244,7 +242,7 @@
       "<button#theme-toggle.theme-toggle>",
       "<footer.footer.site-footer>"
     ],
-    "homeStructureSha256": "0d24228d6228750c1aaa66f2a0febfc87d064e62db5621b5526a27298b7890cb"
+    "homeStructureSha256": "34109eaf885cccbc2e3fcff3e8501123d1f9a4d46ba3ec58c1daf706a8ab34d3"
   },
-  "presentationCapturedFrom": "048f7f0667e8679226c5687c28a1b07b8e3f77db"
+  "presentationCapturedFrom": "b9d495208bd3cf2f5e4ab0a649349b31a7ee2cb3"
 }
