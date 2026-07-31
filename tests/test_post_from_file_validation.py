@@ -253,6 +253,23 @@ class AtomicOutputTests(unittest.TestCase):
             self.assertEqual(post.encode("utf-8"), output.read_bytes())
             self.assertEqual([], self.staging_files(root))
 
+    def test_non_utf8_representable_output_fails_before_staging(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            output = root / "post.md"
+            with mock.patch.object(converter.os, "open") as open_file:
+                with self.assertRaises(converter.IngestionError) as caught:
+                    converter._atomic_create_post(output, "invalid \ud800 output")
+
+            self.assertEqual("encoding_error", caught.exception.category)
+            self.assertEqual(
+                "generated output is not UTF-8-representable at character 8",
+                str(caught.exception),
+            )
+            open_file.assert_not_called()
+            self.assertFalse(output.exists())
+            self.assertEqual([], list(root.iterdir()))
+
     def test_flush_failure_leaves_no_destination_or_temporary_file(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -349,6 +366,15 @@ class MetadataAndOutputValidationTests(unittest.TestCase):
 
     def test_validates_title_slug_and_date(self) -> None:
         self.assert_category("invalid_title", lambda: converter.validate_title("  "))
+        for surrogate in ("\ud800", "\udfff"):
+            with self.subTest(surrogate=ascii(surrogate)):
+                with self.assertRaises(converter.IngestionError) as caught:
+                    converter.validate_title(f"safe{surrogate}title")
+                self.assertEqual("invalid_title", caught.exception.category)
+                self.assertEqual(
+                    "title is not UTF-8-representable at character 4",
+                    str(caught.exception),
+                )
         for codepoint in (*range(0, 32), *range(127, 160)):
             with self.subTest(codepoint=codepoint):
                 self.assert_category(

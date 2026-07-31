@@ -338,6 +338,16 @@ def validate_title(title: str) -> str:
         raise IngestionError("invalid_title", "title must not be empty")
     if len(title) > MAX_TITLE_LENGTH:
         raise IngestionError("invalid_title", f"title must be at most {MAX_TITLE_LENGTH} characters")
+    # Python strings can contain isolated UTF-16 surrogate code points even
+    # though they cannot be represented by strict UTF-8. Reject them as invalid
+    # metadata here, before output binding, extraction, or anonymous staging.
+    try:
+        title.encode("utf-8", errors="strict")
+    except UnicodeEncodeError as exc:
+        raise IngestionError(
+            "invalid_title",
+            f"title is not UTF-8-representable at character {exc.start}",
+        ) from None
     # Reject the complete C0, DEL, and C1 control ranges. In particular, C1
     # characters can be invisible in terminal arguments and must not be allowed
     # to reach generated TOML metadata even when a parser happens to accept them.
@@ -1557,6 +1567,18 @@ def _install_anonymous_file(descriptor: int, target: OutputTarget) -> None:
 
 def _atomic_create_post(output: Path | OutputTarget, post: str) -> None:
     """Install a fully validated anonymous inode as the destination's sole name."""
+    # This is a defensive boundary in addition to metadata/source validation:
+    # callers of this helper may still supply a Python string containing an
+    # isolated surrogate. Categorize that failure before opening the output
+    # directory or creating an O_TMPFILE staging inode.
+    try:
+        expected = post.encode("utf-8", errors="strict")
+    except UnicodeEncodeError as exc:
+        raise IngestionError(
+            "encoding_error",
+            f"generated output is not UTF-8-representable at character {exc.start}",
+        ) from None
+
     owns_target = not isinstance(output, OutputTarget)
     if owns_target:
         path = output
@@ -1568,7 +1590,6 @@ def _atomic_create_post(output: Path | OutputTarget, post: str) -> None:
     else:
         target = output
 
-    expected = post.encode("utf-8")
     descriptor = -1
     try:
         # O_TMPFILE creates an inode with link count zero. Every pre-install
