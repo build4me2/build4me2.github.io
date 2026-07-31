@@ -37,7 +37,10 @@ PINNED_PAPERMOD_COMMIT = "154d006e0182dfc7da38008323976b02e6bfab4a"
 HUGO_VERSION_FILE = Path(".hugo-version")
 HUGO_WORKFLOW = Path(".github/workflows/hugo.yml")
 PRESENTATION_ROOTS = {
-    "extendedCss": Path("assets/css/extended"),
+    # Hugo merges the project's complete assets tree ahead of theme assets.
+    # Inventorying only extended CSS leaves core/common CSS, JavaScript, and
+    # other same-path resources able to shadow PaperMod without review.
+    "assets": Path("assets"),
     "layouts": Path("layouts"),
 }
 HUGO_VERSION_PATTERN = re.compile(r"\bhugo v(?P<version>\d+\.\d+\.\d+)(?:[-+][^\s]+)?")
@@ -744,7 +747,7 @@ def validate_preservation_history(
     # Presentation, configuration, and the theme gitlink are prohibited changes,
     # so compare them directly to Git history rather than trusting editable hashes.
     historical_paths_result = subprocess.run(
-        ["git", "ls-tree", "-r", "--name-only", captured, "layouts", "assets/css/extended"],
+        ["git", "ls-tree", "-r", "--name-only", captured, "assets", "layouts"],
         cwd=ROOT, text=True, capture_output=True,
     )
     if historical_paths_result.returncode:
@@ -777,7 +780,7 @@ def validate_preservation_history(
 
 
 def validate_presentation_file_sets(baseline: dict[str, Any], errors: list[str]) -> None:
-    """Reject additions and removals as well as edits to known presentation files."""
+    """Reject additions and removals across every project theme-shadowing tree."""
     inventory = baseline.get("presentationFileSets", {})
     for name, root in PRESENTATION_ROOTS.items():
         expected = inventory.get(name)

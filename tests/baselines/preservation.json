@@ -10,7 +10,7 @@
   "hugoExtended": true,
   "paperModCommit": "154d006e0182dfc7da38008323976b02e6bfab4a",
   "presentationFileSets": {
-    "extendedCss": [
+    "assets": [
       "assets/css/extended/citations.css",
       "assets/css/extended/layout.css"
     ],

@@ -338,7 +338,7 @@ class SourcePreservationTests(unittest.TestCase):
                 "paperModCommit": "b" * 40,
                 "presentationFileSets": {
                     "layouts": ["layouts/example.html"],
-                    "extendedCss": ["assets/css/extended/example.css"],
+                    "assets": ["assets/css/extended/example.css"],
                 },
                 "homeListing": [{
                     "route": "/established/", "title": "Established", "date": "Jan 2, 2026",
@@ -432,7 +432,7 @@ class SourcePreservationTests(unittest.TestCase):
             front_matter, exact_body = validator.split_post(post)
             baseline = {
                 "presentationFileSets": {
-                    "extendedCss": ["assets/css/extended/layout.css"],
+                    "assets": ["assets/css/extended/layout.css"],
                     "layouts": ["layouts/partials/header.html"],
                 },
                 "protectedFiles": {
@@ -475,6 +475,26 @@ class SourcePreservationTests(unittest.TestCase):
             self.assertIn(
                 "essay prose segment 2 changed without baseline review: content/posts/example.md", errors
             )
+
+    def test_papermod_core_common_css_and_javascript_overrides_are_rejected(self) -> None:
+        """Every project asset path is protected, not only extended CSS."""
+        shadow_paths = [
+            "assets/css/common/header.css",
+            "assets/css/core/theme-vars.css",
+            "assets/js/fastsearch.js",
+        ]
+        for relative in shadow_paths:
+            with self.subTest(relative=relative), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                path = root / relative
+                path.parent.mkdir(parents=True)
+                path.write_text("unapproved PaperMod override\n", encoding="utf-8")
+                errors: list[str] = []
+                with mock.patch.object(validator, "ROOT", root):
+                    validator.validate_presentation_file_sets(
+                        {"presentationFileSets": {"assets": [], "layouts": []}}, errors
+                    )
+                self.assertEqual(errors, [f"unexpected presentation override: {relative}"])
 
 
 class RenderedPreservationTests(unittest.TestCase):
@@ -664,7 +684,7 @@ class CliTests(unittest.TestCase):
         malformed = {
             "schema": "hugo-preservation-baseline/v1",
             "paperModCommit": 42,
-            "presentationFileSets": {"extendedCss": "not-an-array"},
+            "presentationFileSets": {"assets": "not-an-array"},
             "protectedFiles": [],
             "hugoConfiguration": {},
             "homeListing": [{"route": "/example/", "title": False}],
