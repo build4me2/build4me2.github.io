@@ -235,7 +235,7 @@ body::-webkit-scrollbar { display: none; }
     margin: 0;
     color: var(--design-ink);
     font-family: Tinos, "Times New Roman", serif;
-    font-size: clamp(1.06rem, 2.59vw, 2.06rem);
+    font-size: clamp(1.38rem, 3.37vw, 2.68rem);
     font-weight: 700;
     line-height: 1.02;
     letter-spacing: -0.035em;
