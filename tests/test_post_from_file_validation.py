@@ -349,12 +349,32 @@ class MetadataAndOutputValidationTests(unittest.TestCase):
 
     def test_validates_title_slug_and_date(self) -> None:
         self.assert_category("invalid_title", lambda: converter.validate_title("  "))
+        for codepoint in (*range(0, 32), *range(127, 160)):
+            with self.subTest(codepoint=codepoint):
+                self.assert_category(
+                    "invalid_title",
+                    lambda codepoint=codepoint: converter.validate_title(
+                        f"safe{chr(codepoint)}title"
+                    ),
+                )
         self.assert_category("invalid_slug", lambda: converter.validate_slug("../escape"))
         self.assert_category("invalid_slug", lambda: converter.validate_slug("Two-Words"))
         self.assert_category("invalid_date", lambda: converter.validate_date("2026-02-30"))
         self.assert_category("invalid_date", lambda: converter.validate_date("2026-01-01T09:00:00"))
         self.assertEqual("safe-post", converter.validate_slug("safe-post"))
         self.assertEqual("2026-01-01T09:00:00Z", converter.validate_date("2026-01-01T09:00:00Z"))
+
+    def test_generated_front_matter_is_parsed_as_toml(self) -> None:
+        post = converter.front_matter(
+            'A "quoted" \\ title', "2026-01-01T09:00:00Z", "safe-post"
+        ) + "Body.\n"
+        converter.validate_generated_front_matter(post)
+
+        with self.assertRaises(converter.IngestionError) as caught:
+            converter.validate_generated_front_matter(
+                '+++\ntitle = "unterminated\ndate = 2026-01-01\n+++\n\nBody.\n'
+            )
+        self.assertEqual("invalid_front_matter", caught.exception.category)
 
     def test_output_must_be_new_markdown_below_posts_tree(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

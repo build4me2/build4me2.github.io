@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import subprocess
 import tempfile
@@ -130,6 +131,52 @@ class IngestionFixtureTests(unittest.TestCase):
         alias = self.posts / "alias"
         alias.symlink_to(real_directory, target_is_directory=True)
         self.assert_failure_clean("unsafe_output", FIXTURES / "success.txt", alias / "post.md")
+
+    def test_c1_title_fixtures_fail_through_complete_transaction(self) -> None:
+        fixtures = json.loads(
+            (FIXTURES / "c1-metadata.json").read_text(encoding="utf-8")
+        )
+        for fixture in fixtures:
+            destination = self.posts / f"{fixture['name']}.md"
+            real_validate = converter.validate_output
+            with self.subTest(name=fixture["name"]), mock.patch.object(
+                converter,
+                "validate_output",
+                side_effect=lambda path: real_validate(path, self.posts),
+            ), mock.patch.object(converter, "_atomic_create_post") as atomic_create:
+                with self.assertRaises(converter.IngestionError) as caught:
+                    converter.run([
+                        str(FIXTURES / "success.txt"),
+                        "--title", fixture["title"],
+                        "--date", "2026-01-02",
+                        "--output", str(destination),
+                    ])
+                self.assertEqual("invalid_title", caught.exception.category)
+                atomic_create.assert_not_called()
+                self.assertFalse(destination.exists())
+                self.assertEqual([], list(self.posts.rglob(".*.tmp")))
+
+    def test_generated_toml_failure_blocks_before_atomic_staging(self) -> None:
+        destination = self.posts / "invalid-generated-front-matter.md"
+        real_validate = converter.validate_output
+        with mock.patch.object(
+            converter,
+            "validate_output",
+            side_effect=lambda path: real_validate(path, self.posts),
+        ), mock.patch.object(
+            converter, "front_matter", return_value='+++\ntitle = "unterminated\n+++\n\n'
+        ), mock.patch.object(converter, "_atomic_create_post") as atomic_create:
+            with self.assertRaises(converter.IngestionError) as caught:
+                converter.run([
+                    str(FIXTURES / "success.txt"),
+                    "--title", "Fixture Paper",
+                    "--date", "2026-01-02",
+                    "--output", str(destination),
+                ])
+        self.assertEqual("invalid_front_matter", caught.exception.category)
+        atomic_create.assert_not_called()
+        self.assertFalse(destination.exists())
+        self.assertEqual([], list(self.posts.rglob(".*.tmp")))
 
     def test_invalid_metadata_does_not_publish(self) -> None:
         destination = self.posts / "metadata.md"

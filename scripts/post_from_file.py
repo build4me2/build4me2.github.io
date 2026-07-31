@@ -28,6 +28,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import tomllib
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping, NamedTuple, Sequence
@@ -337,7 +338,10 @@ def validate_title(title: str) -> str:
         raise IngestionError("invalid_title", "title must not be empty")
     if len(title) > MAX_TITLE_LENGTH:
         raise IngestionError("invalid_title", f"title must be at most {MAX_TITLE_LENGTH} characters")
-    if any(ord(character) < 32 or ord(character) == 127 for character in title):
+    # Reject the complete C0, DEL, and C1 control ranges. In particular, C1
+    # characters can be invisible in terminal arguments and must not be allowed
+    # to reach generated TOML metadata even when a parser happens to accept them.
+    if any(ord(character) < 32 or 127 <= ord(character) <= 159 for character in title):
         raise IngestionError("invalid_title", "title must not contain control characters")
     return title
 
@@ -1476,6 +1480,38 @@ def front_matter(title: str, date: str, slug: str) -> str:
     return f'''+++\ntitle = "{safe_title}"\ndate = {date}\ndraft = false\nslug = "{slug}"\nhideSummary = true\nShowToc = false\n+++\n\n'''
 
 
+def validate_generated_front_matter(post: str) -> None:
+    """Require one syntactically valid TOML front-matter block.
+
+    This validation is deliberately performed on the final generated string,
+    rather than assuming the individual metadata validators and escaping logic
+    necessarily compose into valid TOML.
+    """
+    lines = post.splitlines()
+    if not lines or lines[0] != "+++":
+        raise IngestionError("invalid_front_matter", "generated post is missing TOML front matter")
+    try:
+        closing = lines.index("+++", 1)
+    except ValueError:
+        raise IngestionError(
+            "invalid_front_matter", "generated TOML front matter is not terminated"
+        ) from None
+    document = "\n".join(lines[1:closing]) + "\n"
+    try:
+        parsed = tomllib.loads(document)
+    except (tomllib.TOMLDecodeError, ValueError) as exc:
+        # Parser text is deterministic for a fixed Python runtime and does not
+        # expose paths or generated temporary names.
+        raise IngestionError(
+            "invalid_front_matter", f"generated TOML front matter is invalid: {exc}"
+        ) from None
+    required = {"title", "date", "draft", "slug", "hideSummary", "ShowToc"}
+    if set(parsed) != required:
+        raise IngestionError(
+            "invalid_front_matter", "generated TOML front matter has unexpected metadata fields"
+        )
+
+
 def _validate_staged_post(descriptor: int, expected: bytes) -> None:
     """Verify complete content through the retained staging descriptor."""
     try:
@@ -1664,6 +1700,9 @@ def run(argv: Sequence[str] | None = None) -> Path:
                 failure.audit_report = report
                 raise failure
             post = front_matter(title, date, slug) + body + "\n"
+            # Parse the complete generated metadata before the transaction can
+            # create even an anonymous staging inode.
+            validate_generated_front_matter(post)
         except BaseException as exc:
             extraction_error = exc
 

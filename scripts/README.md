@@ -103,8 +103,11 @@ for human-readable and JSON audit reports.
 
 The command accepts only regular, non-symlink `.pdf` and UTF-8 `.txt` files of
 at most 25 MiB. The extension must match the file contents. Titles must be
-non-empty, dates must be valid ISO 8601 dates (or timezone-qualified timestamps),
-and slugs use only lowercase ASCII letters, digits, and single hyphens. Each
+non-empty and contain no C0, DEL, or C1 control characters; dates must be valid
+ISO 8601 dates (or timezone-qualified timestamps), and slugs use only lowercase
+ASCII letters, digits, and single hyphens. The complete generated front matter
+is parsed as TOML before anonymous staging begins, so an escaping or generation
+defect cannot install a malformed post. Each
 repeatable `--link 'TEXT=URL'` mapping is parsed before extraction: its label must
 be non-empty and unique, and its destination must be an absolute HTTP(S) URL with
 a fully qualified public host, no credentials, whitespace, controls, malformed
