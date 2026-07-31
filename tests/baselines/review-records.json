@@ -17,6 +17,60 @@
         "Baseline was computed from the inherited repository without editing article or presentation sources.",
         "A clean Hugo render was compared with source titles, prose, links, routes, listing order, and element structure."
       ]
+    },
+    {
+      "id": "code-power-lobel-2017-link",
+      "kind": "citation-reconciliation",
+      "article": "content/posts/code-power-and-consequences.md",
+      "citationIndex": 11,
+      "before": "unlinked:Lobel, 2017",
+      "after": "https://doi.org/10.2139/ssrn.2517604",
+      "reason": "Embed the exact destination verified from the source PDF bibliography and exact-title Crossref DOI record.",
+      "verificationEvidence": [
+        "/home/manisha/Desktop/SFSU_2026/CSC_Ethics/Code, Power and Consequences.pdf identifies Orly Lobel and the exact title The New Cognitive Property: Human Capital Law and the Reach of Intellectual Property.",
+        "Crossref exact-title metadata returns DOI 10.2139/ssrn.2517604 for that title; no destination was inferred from prose alone."
+      ],
+      "proseArgumentRoutePresentationUnchanged": true
+    },
+    {
+      "id": "code-power-lewis-2014-link-1",
+      "kind": "citation-reconciliation",
+      "article": "content/posts/code-power-and-consequences.md",
+      "citationIndex": 14,
+      "before": "unlinked:Lewis, 2014",
+      "after": "https://openlibrary.org/works/OL16816775W",
+      "reason": "Embed the reviewed work record for the exact book identified by the source PDF bibliography.",
+      "verificationEvidence": [
+        "/home/manisha/Desktop/SFSU_2026/CSC_Ethics/Code, Power and Consequences.pdf identifies Michael Lewis, Flash Boys: A Wall Street Revolt, W. W. Norton (2014).",
+        "Open Library exact author/title/year metadata identifies work OL16816775W; the same reviewed destination is reused only for exact Lewis, 2014 labels."
+      ],
+      "proseArgumentRoutePresentationUnchanged": true
+    },
+    {
+      "id": "code-power-lewis-2014-link-2",
+      "kind": "citation-reconciliation",
+      "article": "content/posts/code-power-and-consequences.md",
+      "citationIndex": 20,
+      "before": "unlinked:Lewis, 2014",
+      "after": "https://openlibrary.org/works/OL16816775W",
+      "reason": "Embed the same exact reviewed book destination for the second occurrence.",
+      "verificationEvidence": [
+        "The source PDF bibliography and Open Library work OL16816775W provide the exact author, title, and 2014 publication evidence."
+      ],
+      "proseArgumentRoutePresentationUnchanged": true
+    },
+    {
+      "id": "code-power-lewis-2014-link-3",
+      "kind": "citation-reconciliation",
+      "article": "content/posts/code-power-and-consequences.md",
+      "citationIndex": 21,
+      "before": "unlinked:Lewis, 2014",
+      "after": "https://openlibrary.org/works/OL16816775W",
+      "reason": "Embed the same exact reviewed book destination for the third occurrence.",
+      "verificationEvidence": [
+        "The source PDF bibliography and Open Library work OL16816775W provide the exact author, title, and 2014 publication evidence."
+      ],
+      "proseArgumentRoutePresentationUnchanged": true
     }
   ]
 }

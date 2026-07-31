@@ -10,13 +10,14 @@ from scripts import validate_content as validator
 
 
 class ContentValidatorTests(unittest.TestCase):
-    def test_repository_findings_are_only_evidence_blocked_citations(self) -> None:
-        findings = validator.validate()
-        self.assertEqual(
-            ["(Lewis, 2014)", "(Lobel, 2017)"],
-            sorted(item.message for item in findings if item.code == "unresolved_citation"),
-        )
-        self.assertTrue(all(item.code == "unresolved_citation" for item in findings))
+    def test_repository_has_no_unreviewed_blocking_citations(self) -> None:
+        self.assertEqual([], validator.validate())
+        path = validator.POSTS / "code-power-and-consequences.md"
+        _, body = validator.split_post(path)
+        audit = validator.expected_audit(path, body)
+        self.assertEqual("pass", audit["status"])
+        self.assertIn("https://doi.org/10.2139/ssrn.2517604", audit["destinations"])
+        self.assertIn("https://openlibrary.org/works/OL16816775W", audit["destinations"])
 
     def test_audit_is_deterministic_and_preserves_destination_order(self) -> None:
         path = validator.POSTS / "freedom-of-speech-safe-online.md"

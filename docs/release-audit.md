@@ -18,12 +18,12 @@ make verify-routes
 
 All four established files have committed machine-readable reports under `audits/citations/`. Existing routes, prose, and link destinations remain unchanged.
 
-Publication remains intentionally blocked for two citation labels in `code-power-and-consequences.md` because this repository contains no explicit destination evidence for them:
+The two formerly unlinked labels in `code-power-and-consequences.md` were reconciled from the original course PDF at `/home/manisha/Desktop/SFSU_2026/CSC_Ethics/Code, Power and Consequences.pdf`:
 
-- `(Lobel, 2017)`
-- `(Lewis, 2014)`
+- `Lobel, 2017`: the PDF supplies the exact author and article title; an exact-title Crossref record verifies DOI `10.2139/ssrn.2517604`.
+- `Lewis, 2014`: the PDF supplies the exact author, book title, publisher, and year; Open Library verifies work `OL16816775W`.
 
-Do **not** attach a plausible web result. Completion requires source PDF annotation/URL evidence or an explicit reviewer-supplied destination and evidence record. This is the required fail-closed outcome, not a validator defect.
+Exact review records are committed in `tests/baselines/review-records.json`. Only anchor markup changed; visible wording, arguments, routes, and presentation remain unchanged. All four committed article audits now pass with zero blocking findings.
 
 ## Shortcodes
 

@@ -156,7 +156,7 @@
         "hideSummary": true,
         "ShowToc": false
       },
-      "proseSha256": "64dab61845355bd2cc83ff1258e1203c42fc6f3cfc1cdc8e2a184c71cb9e7d07",
+      "proseSha256": "a02cd147c0a5fde8bd4eb893c8f05f88d8c820c909230a267bf7328f02caa383",
       "renderedProseSha256": "27843bcabfb92f1e8c2c1161b702e61292c9d21406ba9700fed77675df46ec1a",
       "citationDestinations": [
         "https://www.pearson.com/en-us/subject-catalog/p/gift-of-fire-social-legal-and-ethical-issues-for-computing-technology/P200000003391",
@@ -169,25 +169,29 @@
         "https://www.law.cornell.edu/uscode/text/17/107",
         "https://supreme.justia.com/cases/federal/us/510/569/",
         "https://www.law.cornell.edu/uscode/text/17/107",
+        "https://doi.org/10.2139/ssrn.2517604",
         "https://www.law.cornell.edu/uscode/text/18/1832",
         "https://www.congress.gov/bill/114th-congress/senate-bill/1890",
+        "https://openlibrary.org/works/OL16816775W",
         "https://www.vanityfair.com/news/2013/09/michael-lewis-goldman-sachs-programmer",
         "https://www.courtlistener.com/opinion/627046/united-states-v-aleynikov/",
         "https://www.bloomberg.com",
         "https://www.nycourts.gov/REPORTER/3dseries/2018/2018_03174.htm",
         "https://www.bloomberg.com",
+        "https://openlibrary.org/works/OL16816775W",
+        "https://openlibrary.org/works/OL16816775W",
         "https://www.courtlistener.com/opinion/627046/united-states-v-aleynikov/",
         "https://www.vanityfair.com/news/2013/09/michael-lewis-goldman-sachs-programmer",
         "https://www.nytimes.com",
         "https://www.congress.gov/bill/112th-congress/senate-bill/3642",
         "https://www.congress.gov/bill/114th-congress/senate-bill/1890"
       ],
-      "renderedStructureSha256": "bb2e524ecccfdf8a7b4ce3b90add2bbd9eba9f73f3dda71fcfb28d1e143cebd1",
+      "renderedStructureSha256": "65de274878201f5bea3edda42c4c7ecf3eed73daaf487a0a59ad9e449577965f",
       "proseSegmentSha256": [
         "73cf9aa27cece3a92414f743992a1b3bdc3e3522eebc0f9ae5b84be8b3d1ec72",
         "594add8bc068112136b4b79de500ea694d75197f9fce3527c1dd02f4cd94d2d7",
-        "4aee3d1197d5fe58aec19d4f1b53f38ff26fc8f664d92058ba38f4dfc12a051b",
-        "918e294ebd312377785a2bb64bed60731fa07266d1ae6a220b4f699344317b6c",
+        "387cc57b138b7c32283ceca09724cbd16392b9f6d5445104f7988f2c2264c3ff",
+        "a9ace263f02de5305d5831b9384472dd5c00bc6fb96cb2483b284c22aa3358c1",
         "30f32cdba16c4a94afc6cf8836f0d34fe3764fb20544259c7ec82218d73ca641",
         "09da62b0a888af790bb5f700a10c482c93dca6fb5992a65ef4d98fb1fe5f2d80"
       ]

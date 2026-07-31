@@ -95,8 +95,23 @@ def source_links(body: str) -> list[str]:
 
 
 def body_without_link_destinations(body: str) -> str:
-    """Retain exact essay wording/markup while ignoring only href values."""
-    return re.sub(r"(?i)(<a\s+[^>]*href=)([\"'])[^\"']*\2", r"\1\2<CITATION>\2", body)
+    """Retain exact visible essay wording while ignoring reviewed anchor markup.
+
+    Destination changes and newly embedded links are validated separately against
+    exact review records. Stripping only anchor tags lets a reviewed link be added
+    without pretending that the unchanged visible argument is new prose.
+    """
+    return re.sub(r"(?is)<a\s+[^>]*>(.*?)</a>", r"\1", body)
+
+
+def source_anchor_records(body: str) -> list[tuple[str, str]]:
+    records: list[tuple[str, str]] = []
+    for match in re.finditer(
+        r"(?is)<a\s+[^>]*href=([\"'])([^\"']+)\1[^>]*>(.*?)</a>", body
+    ):
+        label = normalized_text(re.sub(r"<[^>]+>", "", html.unescape(match.group(3))))
+        records.append((label, html.unescape(match.group(2))))
+    return records
 
 
 def json_front_matter(values: dict[str, Any]) -> dict[str, Any]:
@@ -588,27 +603,38 @@ def validate_article_history(
     if body_without_link_destinations(current_body) != body_without_link_destinations(original_body):
         fail(errors, f"essay prose/argument differs from captured source commit: {relative}")
 
-    original_links = source_links(original_body)
-    current_links = source_links(current_body)
+    original_anchors = source_anchor_records(original_body)
+    current_anchors = source_anchor_records(current_body)
     applicable = [
         record for record in records
         if record.get("kind") == "citation-reconciliation" and record.get("article") == relative
     ]
     consumed: set[str] = set()
-    for index in range(max(len(original_links), len(current_links))):
-        before = original_links[index] if index < len(original_links) else None
-        after = current_links[index] if index < len(current_links) else None
-        if before == after:
+    original_index = 0
+    for current_index, (label, after) in enumerate(current_anchors, 1):
+        if original_index < len(original_anchors) and original_anchors[original_index] == (label, after):
+            original_index += 1
             continue
+
+        before = (
+            original_anchors[original_index][1]
+            if original_index < len(original_anchors)
+            and original_anchors[original_index][0] == label
+            else f"unlinked:{label}"
+        )
         matches = [
             record for record in applicable
-            if record.get("citationIndex") == index + 1
+            if record.get("citationIndex") == current_index
             and record.get("before") == before and record.get("after") == after
         ]
         if len(matches) != 1:
-            fail(errors, f"citation destination {index + 1} changed without one exact review record: {relative}")
+            fail(errors, f"citation destination {current_index} changed without one exact review record: {relative}")
         else:
             consumed.add(matches[0]["id"])
+        if not before.startswith("unlinked:"):
+            original_index += 1
+    if original_index != len(original_anchors):
+        fail(errors, f"one or more captured citation links were removed or reordered: {relative}")
     for record in applicable:
         if record.get("id") not in consumed:
             fail(errors, f"stale or non-matching citation review record {record.get('id')!r}: {relative}")
