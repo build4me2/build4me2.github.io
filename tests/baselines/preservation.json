@@ -38,7 +38,7 @@
     "layouts/partials/extend_head.html": "1259d3505395de96afe5aadc9a1f1f9634576942aca6d4c04f0ea0e4e84847fc",
     "layouts/partials/extend_post_content.html": "e9a9914eba93f8a1651e3c8135afbcdbb30d6798c91f8366859bdb2474f3789f",
     "layouts/partials/footer.html": "f9930e3c05951e2125b99bbfb5b121af88086365c5443abca7dd39993046d153",
-    "layouts/partials/header.html": "a4f20a4d84b100f3092ddb5b5a4c9403b7e1c470c6e8cae2527f744231c7d0ba",
+    "layouts/partials/header.html": "f0e7588fc7d2afbee05a34da0ae48be9d88257df6b352e31559ac29f19063a5b",
     "layouts/shortcodes/citations.html": "9ea480d85a47e96702abab31f70aa339d90134c763e553f26dd49e84e86621db",
     "layouts/shortcodes/cite.html": "fc050edeaa709b2d544d4d70f6f7ca6393d37240b5ec429e9437ebacc4a3a52e"
   },
@@ -243,5 +243,5 @@
     ],
     "homeStructureSha256": "a86e556c77e263105e5a729e66850f220c46600300e0f56e4dc6457684ec3795"
   },
-  "presentationCapturedFrom": "9e917e199ca42db56522ddc91710c66186349b33"
+  "presentationCapturedFrom": "29c4a2e66351b0bbe3d54755950e3a18fca0d9a8"
 }
