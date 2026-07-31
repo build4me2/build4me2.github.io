@@ -1290,6 +1290,47 @@ def _contains_control(value: str) -> bool:
     return any(ord(character) < 32 or 127 <= ord(character) <= 159 for character in value)
 
 
+def _parse_legacy_ipv4(host: str) -> ipaddress.IPv4Address | None:
+    """Parse historical inet-style IPv4 syntax without DNS or platform APIs.
+
+    Browsers and URL consumers may interpret one- to four-component decimal,
+    octal, or hexadecimal hosts as IPv4 even though ``ipaddress`` correctly
+    rejects those non-canonical spellings. Recognizing them here prevents a
+    private address from passing validation as if it were a DNS name.
+    """
+    candidate = host[:-1] if host.endswith(".") else host
+    components = candidate.split(".")
+    if not 1 <= len(components) <= 4 or any(not component for component in components):
+        return None
+
+    numbers: list[int] = []
+    for component in components:
+        if component.lower().startswith("0x"):
+            digits, base = component[2:], 16
+            if not digits or re.fullmatch(r"[0-9a-fA-F]+", digits) is None:
+                return None
+        elif len(component) > 1 and component.startswith("0"):
+            digits, base = component[1:], 8
+            if re.fullmatch(r"[0-7]*", digits) is None:
+                return None
+        else:
+            digits, base = component, 10
+            if re.fullmatch(r"[0-9]+", digits) is None:
+                return None
+        try:
+            numbers.append(int(digits or "0", base))
+        except ValueError:  # Includes Python's bounded conversion of huge decimal input.
+            return None
+
+    final_bits = 8 * (5 - len(numbers))
+    if any(number > 255 for number in numbers[:-1]) or numbers[-1] >= 1 << final_bits:
+        return None
+    value = numbers[-1]
+    for index, number in enumerate(numbers[:-1]):
+        value |= number << (final_bits + 8 * (len(numbers) - index - 2))
+    return ipaddress.IPv4Address(value)
+
+
 def _normalize_explicit_destination(raw: str) -> str:
     """Validate a user-provided destination before it reaches an HTML attribute."""
     if raw != raw.strip() or not raw:
@@ -1316,18 +1357,28 @@ def _normalize_explicit_destination(raw: str) -> str:
         raise IngestionError("invalid_link", "--link URL must be an absolute HTTP(S) destination")
     if parsed.username is not None or parsed.password is not None:
         raise IngestionError("invalid_link", "--link URL must not contain credentials")
-    try:
-        address = ipaddress.ip_address(parsed.hostname)
-    except ValueError:
-        address = None
-    if parsed.hostname.casefold() == "localhost" or (address is None and "." not in parsed.hostname):
-        raise IngestionError("invalid_link", "--link URL must use a public, fully qualified host")
-    if address is not None and not address.is_global:
-        raise IngestionError("invalid_link", "--link URL must not target a private or local address")
+    if "%" in parsed.hostname:
+        # URL consumers decode host escapes before deciding whether a host is an
+        # IP address; accepting them here would permit %31%32%37.1 to bypass the
+        # same private-address check as its plain-text 127.1 spelling.
+        raise IngestionError("invalid_link", "--link URL host must not use percent encoding")
     try:
         host = parsed.hostname.encode("idna").decode("ascii").lower()
     except UnicodeError:
         raise IngestionError("invalid_link", "--link URL host is invalid") from None
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        address = None
+    legacy_address = _parse_legacy_ipv4(host) if address is None else None
+    if legacy_address is not None:
+        if not legacy_address.is_global:
+            raise IngestionError("invalid_link", "--link URL must not target a private or local address")
+        raise IngestionError("invalid_link", "--link URL must use canonical IPv4 notation")
+    if host.casefold() == "localhost" or (address is None and "." not in host):
+        raise IngestionError("invalid_link", "--link URL must use a public, fully qualified host")
+    if address is not None and not address.is_global:
+        raise IngestionError("invalid_link", "--link URL must not target a private or local address")
     if ":" in host and not host.startswith("["):
         host = f"[{host}]"
     default_port = (parsed.scheme.lower() == "http" and port == 80) or (

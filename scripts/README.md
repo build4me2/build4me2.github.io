@@ -108,8 +108,11 @@ and slugs use only lowercase ASCII letters, digits, and single hyphens. Each
 repeatable `--link 'TEXT=URL'` mapping is parsed before extraction: its label must
 be non-empty and unique, and its destination must be an absolute HTTP(S) URL with
 a fully qualified public host, no credentials, whitespace, controls, malformed
-percent escapes, or HTML/quote delimiters. Scheme and host case, IDN hosts,
-default ports, and an empty path are normalized deterministically. After
+percent escapes, percent-encoded hostnames, or HTML/quote delimiters. Legacy
+numeric IPv4 spellings (including shortened, octal, hexadecimal, and integer
+forms) are rejected so
+loopback or private destinations cannot masquerade as DNS hosts. Scheme and host
+case, IDN hosts, default ports, and an empty path are normalized deterministically. After
 extraction every label must occur exactly once; absent, repeated, duplicate, or
 overlapping labels block publication. Valid destinations are HTML-escaped before
 attribute insertion, and matching is done before generated anchors exist, so a

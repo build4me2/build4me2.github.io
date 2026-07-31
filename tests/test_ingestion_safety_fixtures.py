@@ -177,6 +177,17 @@ class IngestionFixtureTests(unittest.TestCase):
             "A unique cited sentence.=https://user:secret@example.com/source",
             "A unique cited sentence.=https://example.com/source\nheader",
             "missing label=https://example.com/source",
+            # Historical inet/WHATWG spellings must not disguise loopback or
+            # RFC 1918 destinations as apparently qualified DNS hosts.
+            "A unique cited sentence.=http://127.1/source",
+            "A unique cited sentence.=http://127.1./source",
+            "A unique cited sentence.=http://%31%32%37.1/source",
+            "A unique cited sentence.=http://0177.0.0.1/source",
+            "A unique cited sentence.=http://0x7f.0.0.1/source",
+            "A unique cited sentence.=http://0x7f000001/source",
+            "A unique cited sentence.=http://2130706433/source",
+            "A unique cited sentence.=http://0300.0250.0001.0001/source",
+            "A unique cited sentence.=http://3232235777/source",
         )
         for index, value in enumerate(cases):
             destination = self.posts / f"invalid-link-{index}.md"
