@@ -33,10 +33,7 @@
 <ul class="paper-list">
 {{- range $paginator.Pages }}
   <li class="paper-list-item">
-    <a href="{{ .Permalink }}">
-      <span class="paper-list-title">{{ .Title }}</span>
-      <span class="paper-list-arrow" aria-hidden="true">→</span>
-    </a>
+    <a href="{{ .Permalink }}">{{ .Title }}</a>
     <time class="paper-list-date" datetime="{{ .Date.Format "2006-01-02" }}">{{ .Date.Format "Jan 2, 2006" }}</time>
   </li>
 {{- end }}

@@ -207,31 +207,30 @@ body::-webkit-scrollbar { display: none; }
 }
 .paper-list-item:first-child { padding-top: 0; }
 .paper-list-item a {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 14px;
+    display: inline-block;
     color: var(--design-ink);
-    text-decoration: none;
-}
-.paper-list-title {
     font-family: Tinos, "Times New Roman", serif;
     font-size: clamp(1.35rem, 2.4vw, 2rem);
     font-weight: 700;
     line-height: 1.2;
+    text-decoration: none;
     text-transform: uppercase;
 }
-.paper-list-arrow {
+.paper-list-item a::after {
+    display: inline-block;
+    margin-left: 14px;
     font-family: Inter, sans-serif;
-    font-size: 1.25rem;
+    font-size: 1.05rem;
+    content: "→";
     transition: transform 160ms ease;
 }
-.paper-list-item a:hover .paper-list-title,
-.paper-list-item a:focus-visible .paper-list-title {
+.paper-list-item a:hover,
+.paper-list-item a:focus-visible {
     text-decoration: underline dashed;
     text-underline-offset: 5px;
 }
-.paper-list-item a:hover .paper-list-arrow,
-.paper-list-item a:focus-visible .paper-list-arrow { transform: translateX(5px); }
+.paper-list-item a:hover::after,
+.paper-list-item a:focus-visible::after { transform: translateX(5px); }
 .paper-list-date {
     color: var(--design-muted);
     font-family: "IBM Plex Mono", ui-monospace, monospace;
@@ -328,7 +327,7 @@ body::-webkit-scrollbar { display: none; }
     .site-hero h1 { font-size: clamp(1.9rem, 10vw, 3.2rem); }
     .site-hero p { margin-top: 20px; }
     .paper-list-item { grid-template-columns: 1fr; gap: 9px; }
-    .paper-list-arrow { display: none; }
+    .paper-list-item a::after { display: none; }
     .site-footer { flex-direction: column; justify-content: center; }
 }
 
