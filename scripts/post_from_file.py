@@ -1787,17 +1787,22 @@ def _link_anonymous_file(descriptor: int, parent_descriptor: int, name: str) -> 
 def _unlink_installed_inode(
     staged_descriptor: int, parent_descriptor: int, name: str
 ) -> None:
-    """Retract our link after a post-link verification fault, and nothing else."""
+    """Retract our link after a post-link verification fault, and prove removal."""
     try:
         staged_identity = _descriptor_identity(staged_descriptor)
         installed = os.stat(name, dir_fd=parent_descriptor, follow_symlinks=False)
         if (installed.st_dev, installed.st_ino) != staged_identity:
             raise OSError(errno.ESTALE, "installed output identity changed")
         os.unlink(name, dir_fd=parent_descriptor)
+        # Do not treat a mocked, intercepted, or otherwise ineffective unlink as
+        # rollback. The retained descriptor makes link-count verification
+        # independent of the pathname which may have been concurrently moved.
+        if os.fstat(staged_descriptor).st_nlink != 0:
+            raise OSError(errno.EIO, "installed output still has a directory link")
     except OSError as exc:
         raise IngestionError(
-            "output_write",
-            f"cannot retract output after parent relocation: {exc.strerror or exc}",
+            "output_rollback",
+            f"cannot retract output after failed canonical verification: {exc.strerror or exc}",
         ) from None
 
 
@@ -1812,6 +1817,19 @@ def _verify_post_link_installation(descriptor: int, target: OutputTarget) -> Non
         target, expected_output_descriptor=descriptor
     )
     try:
+        # O_TMPFILE starts with no links and this transaction creates exactly
+        # one. Requiring one link proves that the generated inode occupies the
+        # canonical destination and has not also escaped under another name.
+        try:
+            link_count = os.fstat(descriptor).st_nlink
+        except OSError as exc:
+            raise IngestionError(
+                "unsafe_output", f"cannot verify canonical output inode: {exc.strerror or exc}"
+            ) from None
+        if link_count != 1:
+            raise IngestionError(
+                "unsafe_output", "generated output does not have one canonical directory link"
+            )
         return
     finally:
         try:
@@ -1825,10 +1843,9 @@ def _install_anonymous_file(descriptor: int, target: OutputTarget) -> None:
 
     Linux does not provide a conditional link operation that also compares a
     directory inode with its pathname. Therefore verify the complete no-follow
-    chain on both sides of linkat. A post-link fault is reported only after our
-    exact inode has been retracted. If retraction itself fails, the successful
-    exclusive link is the irrevocable commit and this function returns success:
-    it must never report failure while a complete new post may be publishable.
+    chain on both sides of linkat. Success is returned only after the canonical
+    path identifies this inode and its link count proves there is no second
+    generated name. Rollback is cleanup, never an alternative commit criterion.
     """
     parent_descriptor = _reopen_verified_output_parent(target)
     try:
@@ -1845,15 +1862,12 @@ def _install_anonymous_file(descriptor: int, target: OutputTarget) -> None:
         try:
             _verify_post_link_installation(descriptor, target)
         except BaseException:
-            try:
-                _unlink_installed_inode(descriptor, parent_descriptor, target.name)
-            except BaseException:
-                # linkat already committed a complete, exclusively-created
-                # inode. Without a successful unlink there is no safe failure
-                # outcome: reporting one could prompt a retry while that inode
-                # remains publishable (possibly in a concurrently relocated
-                # parent). Commit therefore wins over an unprovable rollback.
-                return
+            # Never convert a canonical-verification fault into success merely
+            # because cleanup also faults. In particular, the retained parent
+            # may now be outside content/posts while a concurrent actor owns the
+            # requested canonical name. Only the successful verification above
+            # is allowed to establish the commit result.
+            _unlink_installed_inode(descriptor, parent_descriptor, target.name)
             raise
     finally:
         try:

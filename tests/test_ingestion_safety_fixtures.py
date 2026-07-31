@@ -130,7 +130,7 @@ class IngestionFixtureTests(unittest.TestCase):
         parent.mkdir()
         output_path = parent / "post.md"
         target = converter.validate_output(output_path, self.posts)
-        relocated_parent = self.posts / "relocated-at-linkat"
+        relocated_parent = self.root / "relocated-outside-posts-at-linkat"
         real_link = converter._link_anonymous_file
         raced = False
 
@@ -179,7 +179,38 @@ class IngestionFixtureTests(unittest.TestCase):
         self.assertEqual([], list(parent.iterdir()))
         self.assertEqual([], list(self.posts.rglob(".*.tmp")))
 
-    def test_unlink_failure_after_relocation_commits_without_harming_existing_destination(self) -> None:
+    def test_concurrent_canonical_creation_is_preserved_and_generated_inode_removed(self) -> None:
+        parent = self.posts / "concurrent-parent"
+        parent.mkdir()
+        output_path = parent / "post.md"
+        target = converter.validate_output(output_path, self.posts)
+        relocated_parent = self.root / "relocated-concurrent-parent"
+        existing = b"concurrently created canonical bytes\x00\xff"
+        real_link = converter._link_anonymous_file
+
+        def relocate_create_then_link(
+            descriptor: int, parent_descriptor: int, name: str
+        ) -> int:
+            parent.rename(relocated_parent)
+            parent.mkdir()
+            output_path.write_bytes(existing)
+            return real_link(descriptor, parent_descriptor, name)
+
+        try:
+            with mock.patch.object(
+                converter, "_link_anonymous_file", side_effect=relocate_create_then_link
+            ), self.assertRaises(converter.IngestionError) as caught:
+                converter._atomic_create_post(target, "complete validated post\n")
+        finally:
+            target.close()
+
+        self.assertEqual("unsafe_output", caught.exception.category)
+        self.assertEqual(existing, output_path.read_bytes())
+        self.assertFalse((relocated_parent / "post.md").exists())
+        self.assertEqual([output_path], list(parent.iterdir()))
+        self.assertEqual([], list(relocated_parent.iterdir()))
+
+    def test_unlink_failure_after_relocation_never_reports_success(self) -> None:
         parent = self.posts / "unlink-parent"
         parent.mkdir()
         output_path = parent / "post.md"
@@ -208,14 +239,16 @@ class IngestionFixtureTests(unittest.TestCase):
                     converter, "_link_anonymous_file", side_effect=relocate_then_link
                 ),
                 mock.patch.object(converter.os, "unlink", side_effect=reject_only_transaction_unlink),
+                self.assertRaises(converter.IngestionError) as caught,
             ):
-                # The exclusive link is the commit point when rollback cannot
-                # be guaranteed; a false failure must not invite a destructive retry.
                 converter._atomic_create_post(target, installed.decode("utf-8"))
         finally:
             target.close()
 
+        self.assertEqual("output_rollback", caught.exception.category)
         self.assertEqual(existing, output_path.read_bytes())
+        # The controlled kernel-cleanup fault deliberately leaves an uncertain
+        # inode, but must never turn that noncanonical inode into CLI success.
         self.assertEqual(installed, (relocated_parent / "post.md").read_bytes())
         self.assertEqual([output_path], list(parent.iterdir()))
         self.assertEqual([relocated_parent / "post.md"], list(relocated_parent.iterdir()))

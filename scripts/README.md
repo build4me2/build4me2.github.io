@@ -143,17 +143,19 @@ to that bound directory descriptor. At the commit boundary, the posts root and
 complete no-follow parent chain are reopened and required to retain their
 validated device/inode identities and containment before installation. The same
 chain is rebound again immediately after `linkat` and must still identify both
-the validated parent and the newly installed staging inode. Linux has no single
+the validated parent and the newly installed staging inode. The retained staging
+descriptor must then report exactly one directory link, proving that the returned
+canonical path is the generated inode's only name. Linux has no single
 conditional link operation that compares a directory inode with its pathname;
 if relocation occurs inside that final syscall window, the converter retracts
 only its own inode through the retained directory descriptor before reporting
-`ERROR[unsafe_output]`. A post-link verification failure is reported only after
-that exact-inode unlink succeeds. If the unlink itself fails, rollback cannot be
-claimed: the already complete, exclusively linked inode is treated as the
-successful commit instead of reporting a false failure that could trigger an
-unsafe retry. Any concurrently created canonical destination remains unchanged
-byte-for-byte. Controlled fixtures cover both the ordinary retraction path and
-the commit-wins unlink-failure path across canonical and relocated directories.
+`ERROR[unsafe_output]`. Retraction is verified by requiring a zero link count.
+A rollback fault is reported as `ERROR[output_rollback]`; it is never converted
+into success, because only complete canonical-path and sole-link verification can
+commit the transaction. Any concurrently created canonical destination remains
+unchanged byte-for-byte. Controlled fixtures cover ordinary retraction, parent
+relocation outside the posts tree, concurrent canonical creation, post-link
+verification faults, and rollback faults.
 
 ## Extraction failure policy
 
