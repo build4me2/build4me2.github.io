@@ -204,14 +204,14 @@ body::-webkit-scrollbar { display: none; }
 
 /* Long-form article typography. */
 .post-single { max-width: 900px; margin: 0 auto; }
-.article-back { margin: -24px 0 12px; }
+.article-back { margin: -32px 0 8px; }
 .article-back a {
     display: inline-block;
     color: var(--design-ink);
     font-family: "IBM Plex Mono", ui-monospace, monospace;
-    font-size: 1.17rem;
+    font-size: 2.34rem;
     font-weight: 700;
-    line-height: 1.5;
+    line-height: 1;
     text-decoration: none;
 }
 .article-back a:hover,
