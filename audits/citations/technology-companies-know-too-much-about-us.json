@@ -1,0 +1,17 @@
+{
+  "schema": "repository-citation-audit/v1",
+  "article": "content/posts/technology-companies-know-too-much-about-us.md",
+  "status": "pass",
+  "destinations": [
+    "https://www.theguardian.com/commentisfree/2019/may/05/privacy-paradox-why-do-people-keep-using-tech-firms-data-facebook-scandal",
+    "https://www.hunton.com/privacy-and-cybersecurity-law-blog/european-commission-fines-apple-and-meta-for-non-compliance-with-the-dma",
+    "https://cybernews.com/resources/5-eyes-9-eyes-14-eyes-countries/",
+    "https://www.pearson.com/en-us/subject-catalog/p/gift-of-fire-social-legal-and-ethical-issues-for-computing-technology/P200000003391",
+    "https://www.pearson.com/en-us/subject-catalog/p/gift-of-fire-social-legal-and-ethical-issues-for-computing-technology/P200000003391"
+  ],
+  "unresolvedEvidence": [],
+  "summary": {
+    "destinationCount": 5,
+    "blockingCount": 0
+  }
+}

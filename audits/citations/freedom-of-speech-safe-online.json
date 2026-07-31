@@ -1,0 +1,25 @@
+{
+  "schema": "repository-citation-audit/v1",
+  "article": "content/posts/freedom-of-speech-safe-online.md",
+  "status": "pass",
+  "destinations": [
+    "https://www.pearson.com/en-us/subject-catalog/p/gift-of-fire-social-legal-and-ethical-issues-for-computing-technology/P200000003391",
+    "https://supreme.justia.com/cases/federal/us/432/43/",
+    "https://law.justia.com/cases/texas/supreme-court/1994/d-1443-0.html",
+    "https://transparency.meta.com/reports/",
+    "https://www.top10vpn.com/research/cost-of-internet-shutdowns/",
+    "https://www.techpolicy.press/lessons-from-nepal-on-the-high-cost-of-controlling-online-expression/",
+    "https://eur-lex.europa.eu/eli/reg/2022/2065/oj",
+    "https://prsindia.org/billtrack/the-information-technology-intermediary-guidelines-and-digital-media-ethics-code-rules-2021",
+    "https://www.congress.gov/117/meeting/house/114268/documents/HHRG-117-IF16-20211201-SD018.pdf",
+    "https://www.commerce.senate.gov/services/files/FC8A558E-824E-4914-BEDB-3A7B1190BD49",
+    "https://theintercept.com/2025/01/09/tiktok-ban-israel-palestine-republicans/",
+    "https://cybersecurityfordemocracy.org/",
+    "https://www.hrw.org/report/2023/12/21/metas-broken-promises/systemic-censorship-palestine-content-instagram-and"
+  ],
+  "unresolvedEvidence": [],
+  "summary": {
+    "destinationCount": 13,
+    "blockingCount": 0
+  }
+}

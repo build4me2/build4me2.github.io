@@ -1,0 +1,53 @@
+{
+  "recovery": {
+    "source": "unicode-paper.pdf",
+    "annotations": [
+      ["annotation only – résumé", "HTTPS://Annotations.Example/Only", 2],
+      ["publisher redirect evidence", "https://redirect.example/go?id=42", 3]
+    ],
+    "text": "Unicode café naïve 日本語 cites (https://Visible.Example/path).\nWrapped https://wrapped.example/research/\nresult?q=café\nReferences\n[1] Resolver https://doi.org/10.7777/Mixed.Case;\n[2] Prefix doi:10.5555/ABC.Def.\n[3] Bare 10.1000/XYZ-123!\n",
+    "methods": [
+      "pdf_annotation",
+      "pdf_annotation",
+      "visible_url",
+      "visible_url_wrapped",
+      "doi_url",
+      "doi_prefixed",
+      "bare_doi"
+    ],
+    "destinations": [
+      "https://annotations.example/Only",
+      "https://redirect.example/go?id=42",
+      "https://visible.example/path",
+      "https://wrapped.example/research/result?q=café",
+      "https://doi.org/10.7777/mixed.case",
+      "https://doi.org/10.5555/abc.def",
+      "https://doi.org/10.1000/xyz-123"
+    ]
+  },
+  "duplicateReferences": {
+    "text": "First claim.[1]\nRepeated claim.[1]\nReferences\n[1] Alpha https://duplicate.example/source\n[1] Alpha repeated https://duplicate.example/source\n",
+    "requiredStatuses": ["ambiguous", "duplicate_identity", "duplicate_candidate"]
+  },
+  "ambiguousAuthorYear": {
+    "text": "Prior research (Smith, 2020) supports this.\nReferences\nSmith, A. (2020). First https://one.example/source\nSmith, B. (2020). Second https://two.example/source\n",
+    "citationStatus": "ambiguous"
+  },
+  "orphansAndMissing": {
+    "text": "A missing source claim.[9]\nLoose evidence https://orphan.example/item\nReferences\n[1] Linked https://linked.example/item\n[2] Entry without a destination\n",
+    "requiredStatuses": ["unresolved", "unlinked", "orphaned"]
+  },
+  "unsafeLinks": {
+    "text": "Malformed http://bad.example:invalid/path\nUnsupported ftp://files.example/source\nSuspicious http://localhost/private\nCredential https://reader:secret@papers.example/item\n",
+    "requiredStatuses": ["malformed", "suspicious"]
+  },
+  "falsePositives": {
+    "text": "Version 2 was released in 2024. The measured ratio was 3.14. There were 99 participants.\n",
+    "expectedCitationCount": 0
+  },
+  "noInventedFallback": {
+    "text": "Jones (2022) describes the result.\nReferences\nJones, A. (2022). A Plausible Article. Journal of Examples.\nexample.com/looks-like-a-domain\n",
+    "expectedCandidateCount": 0,
+    "requiredStatuses": ["unlinked"]
+  }
+}

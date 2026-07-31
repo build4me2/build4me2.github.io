@@ -48,21 +48,34 @@ def _suspicious_reason(destination: str) -> str | None:
 
 
 def malformed_url_findings(raw_text: str, normalized_raw_evidence: Sequence[str]) -> list[dict[str, Any]]:
-    """Report explicit HTTP(S) tokens rejected by conservative extraction."""
+    """Report rejected or unsupported explicit URI tokens.
+
+    Citation destinations are deliberately limited to HTTP(S).  A token with a
+    different explicit scheme is evidence of an attempted link, not prose from
+    which a replacement destination may be invented, so it receives the same
+    fail-closed malformed disposition as an invalid HTTP(S) URL.
+    """
     known = {item.replace("\n", "").replace("\r", "").replace("\x0c", "") for item in normalized_raw_evidence}
     findings: list[dict[str, Any]] = []
     page = line = 1
+    uri_pattern = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://[^\s<>\"'`]+")
     for page, page_text in enumerate(raw_text.split("\x0c"), 1):
         for line, value in enumerate(page_text.splitlines(), 1):
-            for occurrence, match in enumerate(re.finditer(r"(?i)https?://[^\s<>\"'`]+", value), 1):
+            for occurrence, match in enumerate(uri_pattern.finditer(value), 1):
                 token = match.group(0)
                 # Extracted evidence may have terminal prose punctuation trimmed.
                 if any(token.startswith(item) or item.startswith(token) for item in known):
                     continue
+                scheme = token.partition(":")[0].lower()
+                reason = (
+                    "explicit HTTP(S) token was rejected by URL normalization"
+                    if scheme in {"http", "https"}
+                    else f"explicit URI uses unsupported scheme {scheme!r}"
+                )
                 findings.append({
                     "subjectType": "link", "subjectId": f"malformed-{page:04d}-{line:04d}-{occurrence:04d}",
                     "status": "malformed", "matchedId": None,
-                    "reason": "explicit HTTP(S) token was rejected by URL normalization",
+                    "reason": reason,
                     "evidence": token,
                     "sourceLocation": {"page": page, "line": line},
                 })

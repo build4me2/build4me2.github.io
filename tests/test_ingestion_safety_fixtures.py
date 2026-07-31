@@ -245,13 +245,14 @@ class IngestionFixtureTests(unittest.TestCase):
         finally:
             target.close()
 
-        self.assertEqual("output_rollback", caught.exception.category)
+        self.assertEqual("unsafe_output", caught.exception.category)
         self.assertEqual(existing, output_path.read_bytes())
-        # The controlled kernel-cleanup fault deliberately leaves an uncertain
-        # inode, but must never turn that noncanonical inode into CLI success.
-        self.assertEqual(installed, (relocated_parent / "post.md").read_bytes())
+        self.assertFalse(
+            (relocated_parent / "post.md").exists(),
+            "independent rollback left generated Markdown in the posts tree",
+        )
         self.assertEqual([output_path], list(parent.iterdir()))
-        self.assertEqual([relocated_parent / "post.md"], list(relocated_parent.iterdir()))
+        self.assertEqual([], list(relocated_parent.iterdir()))
         self.assertEqual([], list(self.posts.rglob(".*.tmp")))
 
     def test_invalid_encoding_empty_and_unsupported_sources_do_not_publish(self) -> None:

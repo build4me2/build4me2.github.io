@@ -1235,6 +1235,8 @@ def match_citation_candidates(
             status, reason = "duplicate_candidate", "reference repeats one destination candidate"
         elif len(destinations) > 1:
             status, reason = "conflicting_destination", "reference has multiple distinct destinations"
+        elif not any(citation.identity == reference.identity for citation in citations):
+            status, reason = "orphaned", "reference is not cited by any in-text citation"
         else:
             status, reason = "matched", "one exact destination candidate"
         dispositions.append(CitationDisposition(
@@ -1784,6 +1786,22 @@ def _link_anonymous_file(descriptor: int, parent_descriptor: int, name: str) -> 
     return ctypes.get_errno()
 
 
+def _unlinkat_direct(parent_descriptor: int, name: str) -> int:
+    """Call unlinkat directly, returning zero or the captured errno.
+
+    Rollback deliberately has an independent syscall path.  A wrapper-level
+    failure or an intercepted/ineffective ``os.unlink`` must not leave a newly
+    generated Markdown name in the publishable tree.
+    """
+    libc = ctypes.CDLL(None, use_errno=True)
+    unlinkat = libc.unlinkat
+    unlinkat.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int]
+    unlinkat.restype = ctypes.c_int
+    if unlinkat(parent_descriptor, os.fsencode(name), 0) == 0:
+        return 0
+    return ctypes.get_errno()
+
+
 def _unlink_installed_inode(
     staged_descriptor: int, parent_descriptor: int, name: str
 ) -> None:
@@ -1793,11 +1811,24 @@ def _unlink_installed_inode(
         installed = os.stat(name, dir_fd=parent_descriptor, follow_symlinks=False)
         if (installed.st_dev, installed.st_ino) != staged_identity:
             raise OSError(errno.ESTALE, "installed output identity changed")
-        os.unlink(name, dir_fd=parent_descriptor)
-        # Do not treat a mocked, intercepted, or otherwise ineffective unlink as
-        # rollback. The retained descriptor makes link-count verification
-        # independent of the pathname which may have been concurrently moved.
+
+        primary_error: OSError | None = None
+        try:
+            os.unlink(name, dir_fd=parent_descriptor)
+        except OSError as exc:
+            primary_error = exc
+
+        # Verify through the retained inode, not through a pathname. If the
+        # high-level unlink failed or was ineffective, use an independent
+        # unlinkat call against the already verified directory descriptor.
         if os.fstat(staged_descriptor).st_nlink != 0:
+            fallback_error = _unlinkat_direct(parent_descriptor, name)
+            if fallback_error not in {0, errno.ENOENT}:
+                raise OSError(fallback_error, os.strerror(fallback_error))
+
+        if os.fstat(staged_descriptor).st_nlink != 0:
+            if primary_error is not None:
+                raise primary_error
             raise OSError(errno.EIO, "installed output still has a directory link")
     except OSError as exc:
         raise IngestionError(

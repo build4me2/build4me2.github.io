@@ -5,6 +5,8 @@ setup:
 
 validate:
 	python3 scripts/run_validation.py
+	python3 scripts/validate_content.py
+	python3 scripts/validate_preservation_baseline.py
 
 build:
 	python3 scripts/build_site.py

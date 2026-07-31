@@ -1,0 +1,14 @@
+{
+  "schema": "repository-citation-audit/v1",
+  "article": "content/posts/ethical-frameworks-in-development-of-technology.md",
+  "status": "pass",
+  "destinations": [
+    "https://conversationswithbillkristol.org/transcript/peter-thiel-transcript/",
+    "https://eng.vt.edu/magazine/stories/fall-2023/ai.html"
+  ],
+  "unresolvedEvidence": [],
+  "summary": {
+    "destinationCount": 2,
+    "blockingCount": 0
+  }
+}

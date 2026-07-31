@@ -150,12 +150,15 @@ conditional link operation that compares a directory inode with its pathname;
 if relocation occurs inside that final syscall window, the converter retracts
 only its own inode through the retained directory descriptor before reporting
 `ERROR[unsafe_output]`. Retraction is verified by requiring a zero link count.
-A rollback fault is reported as `ERROR[output_rollback]`; it is never converted
-into success, because only complete canonical-path and sole-link verification can
-commit the transaction. Any concurrently created canonical destination remains
-unchanged byte-for-byte. Controlled fixtures cover ordinary retraction, parent
-relocation outside the posts tree, concurrent canonical creation, post-link
-verification faults, and rollback faults.
+If the high-level unlink path fails or is ineffective, rollback uses an
+independent `unlinkat` syscall against the retained verified directory descriptor
+and proves the staging inode has zero links before returning the original
+verification failure. A rollback fault is reported as `ERROR[output_rollback]`
+only when that proof cannot be established; it is never converted into success.
+Any concurrently created canonical destination remains unchanged byte-for-byte.
+Controlled fixtures cover ordinary retraction, parent relocation outside and
+inside the posts tree, concurrent canonical creation, post-link verification
+faults, intercepted unlink calls, and ineffective cleanup calls.
 
 ## Extraction failure policy
 

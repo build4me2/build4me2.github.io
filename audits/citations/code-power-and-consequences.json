@@ -1,0 +1,37 @@
+{
+  "schema": "repository-citation-audit/v1",
+  "article": "content/posts/code-power-and-consequences.md",
+  "status": "blocked",
+  "destinations": [
+    "https://www.pearson.com/en-us/subject-catalog/p/gift-of-fire-social-legal-and-ethical-issues-for-computing-technology/P200000003391",
+    "https://www.pearson.com/en-us/subject-catalog/p/gift-of-fire-social-legal-and-ethical-issues-for-computing-technology/P200000003391",
+    "https://www.courtlistener.com/opinion/627046/united-states-v-aleynikov/",
+    "https://www.courtlistener.com/opinion/627046/united-states-v-aleynikov/",
+    "https://www.vanityfair.com/news/2013/09/michael-lewis-goldman-sachs-programmer",
+    "https://www.courtlistener.com/opinion/627046/united-states-v-aleynikov/",
+    "https://www.vanityfair.com/news/2013/09/michael-lewis-goldman-sachs-programmer",
+    "https://www.law.cornell.edu/uscode/text/17/107",
+    "https://supreme.justia.com/cases/federal/us/510/569/",
+    "https://www.law.cornell.edu/uscode/text/17/107",
+    "https://www.law.cornell.edu/uscode/text/18/1832",
+    "https://www.congress.gov/bill/114th-congress/senate-bill/1890",
+    "https://www.vanityfair.com/news/2013/09/michael-lewis-goldman-sachs-programmer",
+    "https://www.courtlistener.com/opinion/627046/united-states-v-aleynikov/",
+    "https://www.bloomberg.com",
+    "https://www.nycourts.gov/REPORTER/3dseries/2018/2018_03174.htm",
+    "https://www.bloomberg.com",
+    "https://www.courtlistener.com/opinion/627046/united-states-v-aleynikov/",
+    "https://www.vanityfair.com/news/2013/09/michael-lewis-goldman-sachs-programmer",
+    "https://www.nytimes.com",
+    "https://www.congress.gov/bill/112th-congress/senate-bill/3642",
+    "https://www.congress.gov/bill/114th-congress/senate-bill/1890"
+  ],
+  "unresolvedEvidence": [
+    "(Lewis, 2014)",
+    "(Lobel, 2017)"
+  ],
+  "summary": {
+    "destinationCount": 22,
+    "blockingCount": 2
+  }
+}
