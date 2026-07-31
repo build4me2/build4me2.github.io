@@ -221,12 +221,14 @@ body::-webkit-scrollbar { display: none; }
 }
 .article-back a span {
     display: inline-block;
+    transform: scaleX(1.18);
+    transform-origin: left center;
     transition: transform 160ms ease;
 }
 .article-back a:hover,
 .article-back a:focus-visible { color: var(--design-ink); }
 .article-back a:hover span,
-.article-back a:focus-visible span { transform: translateX(-6px); }
+.article-back a:focus-visible span { transform: translateX(-6px) scaleX(1.18); }
 .post-header { margin: 0 0 42px; padding-bottom: 34px; border-bottom: 2px dashed var(--design-rule); }
 .post-title,
 .editorial-page-header h1 {
