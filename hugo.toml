@@ -12,11 +12,30 @@ theme = 'PaperMod'
   [services.googleAnalytics]
     id = ""
 
+# --- Main navigation ---
+[menu]
+  [[menu.main]]
+    name = "Home"
+    url = "/"
+    weight = 10
+  [[menu.main]]
+    name = "Portfolio"
+    url = "https://build4me2.github.io/Portfolio-Manisha/"
+    weight = 20
+  [[menu.main]]
+    name = "GitHub"
+    url = "https://github.com/build4me2"
+    weight = 30
+  [[menu.main]]
+    name = "LinkedIn"
+    url = "https://www.linkedin.com/in/manisha-chand-393908304/"
+    weight = 40
+
 # --- Params ---
 [params]
   env = "production"
   description = "Essays on technology, law, and ethics by Manisha Chand."
-  defaultTheme = "auto"
+  defaultTheme = "dark"
   ShowReadingTime = true
   ShowShareButtons = false
   ShowPostNavLinks = false
