@@ -1,8 +1,6 @@
 {{- define "main" }}
 
-{{- if .IsHome }}
-<h1 class="section-label">Essays</h1>
-{{- else if .Title }}
+{{- if and (not .IsHome) .Title }}
 <header class="page-header editorial-page-header">
   {{- partial "breadcrumbs.html" . }}
   <h1>{{ .Title }}</h1>

@@ -17,8 +17,8 @@
 }
 
 :root[data-theme="dark"] {
-    --theme: #111113;
-    --entry: #1a1a1d;
+    --theme: #1a1a1d;
+    --entry: #242427;
     --primary: #f0f0ed;
     --secondary: #a8a8aa;
     --tertiary: #262629;
@@ -26,7 +26,7 @@
     --code-block-bg: #09090a;
     --code-bg: #242427;
     --border: #55555a;
-    --design-paper: #111113;
+    --design-paper: #1a1a1d;
     --design-ink: #f0f0ed;
     --design-ink-soft: #d0d0ce;
     --design-muted: #a2a2a5;
@@ -100,7 +100,7 @@ body::-webkit-scrollbar { display: none; }
 .logo a {
     color: var(--design-ink);
     font-family: "Press Start 2P", ui-monospace, monospace;
-    font-size: clamp(0.72rem, 1.4vw, 0.95rem);
+    font-size: clamp(0.94rem, 1.82vw, 1.24rem);
     font-weight: 400;
     line-height: 1.5;
     letter-spacing: -0.035em;
@@ -154,21 +154,6 @@ body::-webkit-scrollbar { display: none; }
     background: var(--design-ink);
 }
 .menu-theme-toggle button.theme-toggle svg { width: 17px; height: 17px; }
-
-/* Homepage section framing. */
-.section-label {
-    display: inline-block;
-    margin: 0 0 38px;
-    padding: 6px 9px 5px;
-    color: var(--design-paper);
-    background: var(--design-ink);
-    font-family: Inter, Arial, sans-serif;
-    font-size: clamp(1.35rem, 2.6vw, 2rem);
-    font-weight: 700;
-    line-height: 1;
-    letter-spacing: -0.045em;
-    text-transform: uppercase;
-}
 
 /* Essay index. */
 .paper-list { margin: 0; padding: 0; list-style: none; }
@@ -298,9 +283,7 @@ body::-webkit-scrollbar { display: none; }
 }
 
 @media (prefers-reduced-motion: no-preference) {
-    .section-label,
-    .paper-list { animation: editorial-reveal 520ms ease both; }
-    .section-label { animation-delay: 70ms; }
+    .paper-list { animation: editorial-reveal 520ms 70ms ease both; }
     .paper-list { animation-delay: 110ms; }
 }
 @keyframes editorial-reveal {
