@@ -429,6 +429,7 @@ def validate_baseline_schema(baseline: Any) -> list[str]:
                 fail(errors, f"$.hugoConfiguration[{dotted!r}]: expected scalar, got {json_type(value)}")
 
     listing = field(root, "$", "homeListing", list)
+    listing_routes: list[str] = []
     if isinstance(listing, list):
         if len(listing) != 4:
             fail(errors, f"$.homeListing: expected exactly 4 established entries, got {len(listing)}")
@@ -437,9 +438,17 @@ def validate_baseline_schema(baseline: Any) -> list[str]:
             obj = expect_object(item, path)
             if obj is not None:
                 for name in ("route", "title", "date"):
-                    string_field(obj, path, name)
+                    value = string_field(obj, path, name)
+                    if name == "route" and value is not None:
+                        listing_routes.append(value)
+        if len(listing_routes) != len(set(listing_routes)):
+            fail(errors, "$.homeListing: established routes must be unique (duplicate route found)")
 
     articles = field(root, "$", "articles", list)
+    article_sources: list[str] = []
+    article_routes: list[str] = []
+    article_titles: list[str] = []
+    article_slugs: list[str] = []
     if isinstance(articles, list):
         if len(articles) != 4:
             fail(errors, f"$.articles: expected exactly 4 established entries, got {len(articles)}")
@@ -453,13 +462,25 @@ def validate_baseline_schema(baseline: Any) -> list[str]:
                 "renderedStructureSha256",
             ):
                 value = string_field(obj, path, name)
+                if name == "source" and value is not None:
+                    article_sources.append(value)
+                if name == "route" and value is not None:
+                    article_routes.append(value)
                 if name.endswith("Sha256") and value is not None and not re.fullmatch(r"[0-9a-f]{64}", value):
                     fail(errors, f"{path}.{name}: expected a 64-character lowercase hexadecimal SHA-256")
             front_matter = field(obj, path, "frontMatter", dict)
             if isinstance(front_matter, dict):
                 front_path = f"{path}.frontMatter"
                 for name in ("title", "date", "slug"):
-                    string_field(front_matter, front_path, name)
+                    value = string_field(front_matter, front_path, name)
+                    if name == "title" and value is not None:
+                        article_titles.append(value)
+                    if name == "slug" and value is not None:
+                        article_slugs.append(value)
+                route = obj.get("route")
+                slug = front_matter.get("slug")
+                if isinstance(route, str) and isinstance(slug, str) and route != f"/{slug}/":
+                    fail(errors, f"{path}.route: must be the canonical route for frontMatter.slug")
                 for name in ("draft", "hideSummary", "ShowToc"):
                     field(front_matter, front_path, name, bool)
             string_array(obj, path, "citationDestinations")
@@ -471,6 +492,14 @@ def validate_baseline_schema(baseline: Any) -> list[str]:
                             errors,
                             f"{path}.proseSegmentSha256[{segment_index}]: expected a 64-character lowercase hexadecimal SHA-256",
                         )
+        for label, values in (
+            ("source paths", article_sources), ("routes", article_routes),
+            ("titles", article_titles), ("slugs", article_slugs),
+        ):
+            if len(values) != len(set(values)):
+                fail(errors, f"$.articles: established {label} must be unique (duplicate found)")
+        if sorted(article_routes) != sorted(listing_routes):
+            fail(errors, "$.homeListing: routes must map one-to-one to established articles")
 
     rendered = field(root, "$", "renderedContract", dict)
     if isinstance(rendered, dict):
@@ -598,6 +627,37 @@ def display_date(value: str) -> str:
     return f"{parsed.strftime('%b')} {parsed.day}, {parsed.year}"
 
 
+def captured_article_identities(commit: str, errors: list[str]) -> list[tuple[str, str, str, str]] | None:
+    """Derive the immutable source/title/slug/route set from the captured tree."""
+    result = subprocess.run(
+        ["git", "ls-tree", "-r", "--name-only", commit, "content/posts"],
+        cwd=ROOT, text=True, capture_output=True,
+    )
+    if result.returncode:
+        fail(errors, f"cannot inventory established articles at commit {commit!r}")
+        return None
+
+    sources = sorted(
+        relative for relative in result.stdout.splitlines()
+        if relative.endswith(".md") and not Path(relative).name.startswith("_")
+    )
+    identities: list[tuple[str, str, str, str]] = []
+    for relative in sources:
+        original = captured_file(commit, relative, errors)
+        if original is None:
+            continue
+        try:
+            front_matter, _body = split_post_text(original.decode("utf-8"), f"{commit}:{relative}")
+            title = front_matter["title"]
+            slug = front_matter["slug"]
+            if not isinstance(title, str) or not isinstance(slug, str):
+                raise ValueError("title and slug must be strings")
+            identities.append((relative, title, slug, f"/{slug}/"))
+        except (KeyError, UnicodeDecodeError, ValueError, tomllib.TOMLDecodeError) as exc:
+            fail(errors, f"cannot derive captured article identity for {relative} ({type(exc).__name__})")
+    return identities
+
+
 def validate_preservation_history(
     baseline: dict[str, Any], review_document: dict[str, Any], errors: list[str]
 ) -> None:
@@ -607,6 +667,20 @@ def validate_preservation_history(
     expected_listing: list[tuple[str, dict[str, str]]] = []
     consumed_front_matter_records: set[str] = set()
     consumed_citation_records: set[str] = set()
+
+    captured_identities = captured_article_identities(captured, errors)
+    baseline_identities = [
+        (
+            article["source"], article["frontMatter"]["title"],
+            article["frontMatter"]["slug"], article["route"],
+        )
+        for article in baseline["articles"]
+    ]
+    if captured_identities is not None and sorted(baseline_identities) != sorted(captured_identities):
+        fail(
+            errors,
+            "established source paths, titles, slugs, or routes differ from captured history",
+        )
 
     for article in baseline["articles"]:
         relative = article["source"]

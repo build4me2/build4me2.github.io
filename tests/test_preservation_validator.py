@@ -193,6 +193,33 @@ class SourcePreservationTests(unittest.TestCase):
             self.assertEqual(inventory, sorted(set(inventory)))
             self.assertEqual(actual, inventory)
 
+    def test_duplicate_source_rewrite_cannot_hide_an_established_essay(self) -> None:
+        baseline = json.loads((ROOT / "tests/baselines/preservation.json").read_text(encoding="utf-8"))
+        # Keep four entries while replacing one established source with another.
+        # A cardinality-only check would incorrectly accept this rewrite.
+        baseline["articles"][1]["source"] = baseline["articles"][0]["source"]
+
+        errors = validator.validate_baseline_schema(baseline)
+
+        self.assertIn(
+            "$.articles: established source paths must be unique (duplicate found)", errors
+        )
+
+    def test_duplicate_route_rewrite_cannot_hide_an_established_route(self) -> None:
+        baseline = json.loads((ROOT / "tests/baselines/preservation.json").read_text(encoding="utf-8"))
+        duplicate = baseline["articles"][0]["route"]
+        # Rewrite both inventories so a simple article/listing set comparison
+        # cannot hide the removed route behind a duplicate route.
+        baseline["articles"][1]["route"] = duplicate
+        baseline["homeListing"][1]["route"] = duplicate
+
+        errors = validator.validate_baseline_schema(baseline)
+
+        self.assertIn("$.articles: established routes must be unique (duplicate found)", errors)
+        self.assertIn(
+            "$.homeListing: established routes must be unique (duplicate route found)", errors
+        )
+
     def test_review_records_require_a_real_change_and_meaningful_evidence(self) -> None:
         record = {
             "id": "   ",
