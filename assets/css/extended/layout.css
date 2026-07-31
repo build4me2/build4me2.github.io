@@ -207,14 +207,14 @@ body::-webkit-scrollbar { display: none; }
 .article-back {
     position: relative;
     top: 0.4cm;
-    left: -0.3cm;
+    left: -0.6cm;
     margin: -32px 0 8px;
 }
 .article-back a {
     display: inline-flex;
     color: var(--design-ink);
     font-family: Inter, sans-serif;
-    font-size: 1.58rem;
+    font-size: 2.05rem;
     font-weight: 700;
     line-height: 1;
     text-decoration: none;
