@@ -206,7 +206,7 @@ body::-webkit-scrollbar { display: none; }
 .post-single { max-width: 900px; margin: 0 auto; }
 .article-back {
     position: relative;
-    top: 0.2cm;
+    top: 0.1cm;
     left: -0.3cm;
     margin: -32px 0 8px;
 }
