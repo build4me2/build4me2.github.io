@@ -178,6 +178,24 @@ class PdfExtractionFailureTests(unittest.TestCase):
             "missing_annotations", lambda: converter.extract_pdf_links(Path("paper.pdf"))
         )
 
+    @mock.patch.object(converter, "_run_pdf_tool")
+    def test_partial_loss_of_duplicate_pdf_url_annotations_is_blocked(self, tool) -> None:
+        tool.side_effect = [
+            b"Page Type URL\n"
+            b"1 Annotation https://example.com/shared\n"
+            b"2 Annotation https://example.com/shared\n",
+            b'<html><body><a href="https://example.com/shared">one recovered link</a></body></html>',
+        ]
+        with self.assertRaises(converter.IngestionError) as caught:
+            converter.extract_pdf_links(Path("paper.pdf"))
+
+        self.assertEqual("missing_annotations", caught.exception.category)
+        self.assertEqual(
+            "pdftohtml omitted 1 URL annotation(s); first missing URL: "
+            "https://example.com/shared",
+            str(caught.exception),
+        )
+
     def test_all_poppler_passes_share_the_same_inherited_descriptor(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             source = Path(temporary) / "paper.pdf"

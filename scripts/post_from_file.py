@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import ctypes
 import errno
+from collections import Counter
 import ipaddress
 import os
 import re
@@ -1220,7 +1221,10 @@ def extract_pdf_links(source: Path | InputSnapshot) -> list[tuple[str, str]]:
             "pdfinfo", ["-url", "-enc", "UTF-8", str(path)], pass_fds=pass_fds
         ),
     )
-    expected_urls = set(re.findall(r"https?://\S+", annotation_report))
+    # Keep one record per annotation. Multiple annotations may deliberately
+    # share a destination, so set comparison would let pdftohtml lose all but
+    # one occurrence without reporting partial extraction.
+    expected_urls = re.findall(r"https?://\S+", annotation_report)
     html = _decode_tool_output(
         "pdftohtml",
         _run_pdf_tool(
@@ -1238,8 +1242,8 @@ def extract_pdf_links(source: Path | InputSnapshot) -> list[tuple[str, str]]:
         label = re.sub(r"\s+", " ", label).replace("​", "").strip()
         if label:
             links.append((label, url))
-    recovered_urls = {url for _, url in links}
-    missing = sorted(expected_urls - recovered_urls)
+    recovered_urls = [url for _, url in links]
+    missing = sorted((Counter(expected_urls) - Counter(recovered_urls)).elements())
     if missing:
         raise IngestionError(
             "missing_annotations",
