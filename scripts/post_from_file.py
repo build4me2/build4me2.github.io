@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import ctypes
 import errno
+import ipaddress
 import os
 import re
 import shutil
@@ -30,7 +31,7 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping, NamedTuple, Sequence
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import unquote_to_bytes, urlsplit, urlunsplit
 
 # Public review APIs live in a small independent module so override files can be
 # validated without invoking ingestion. Re-export them here alongside the
@@ -108,6 +109,13 @@ class SourceLocation(NamedTuple):
     line: int | None
     section: str
     annotation: int | None = None
+
+
+class ExplicitLink(NamedTuple):
+    """One validated citation label and its canonical safe destination."""
+
+    label: str
+    destination: str
 
 
 class CitationCandidate(NamedTuple):
@@ -1278,13 +1286,97 @@ def fix_extraction_artifacts(text: str) -> str:
     return text
 
 
-def embed_links(text: str, explicit_links: list[str]) -> str:
-    for item in explicit_links:
-        if "=" not in item:
-            raise SystemExit(f"Bad --link value: {item!r}. Use TEXT=URL")
-        label, url = item.split("=", 1)
-        if label in text:
-            text = text.replace(label, f'<a href="{url}">{label}</a>', 1)
+def _contains_control(value: str) -> bool:
+    return any(ord(character) < 32 or 127 <= ord(character) <= 159 for character in value)
+
+
+def _normalize_explicit_destination(raw: str) -> str:
+    """Validate a user-provided destination before it reaches an HTML attribute."""
+    if raw != raw.strip() or not raw:
+        raise IngestionError("invalid_link", "--link URL must not be empty or have surrounding whitespace")
+    if _contains_control(raw) or any(character.isspace() for character in raw):
+        raise IngestionError("invalid_link", "--link URL must not contain whitespace or control characters")
+    if any(character in raw for character in "\\\"'<>`"):
+        raise IngestionError("invalid_link", "--link URL contains a forbidden delimiter")
+    if re.search(r"%(?![0-9A-Fa-f]{2})", raw):
+        raise IngestionError("invalid_link", "--link URL contains malformed percent encoding")
+    try:
+        decoded = unquote_to_bytes(raw)
+    except UnicodeEncodeError:
+        raise IngestionError("invalid_link", "--link URL must use valid URL encoding") from None
+    if any(byte < 32 or 127 <= byte <= 159 for byte in decoded):
+        raise IngestionError("invalid_link", "--link URL contains an encoded control character")
+
+    try:
+        parsed = urlsplit(raw)
+        port = parsed.port
+    except ValueError:
+        raise IngestionError("invalid_link", "--link URL is malformed") from None
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
+        raise IngestionError("invalid_link", "--link URL must be an absolute HTTP(S) destination")
+    if parsed.username is not None or parsed.password is not None:
+        raise IngestionError("invalid_link", "--link URL must not contain credentials")
+    try:
+        address = ipaddress.ip_address(parsed.hostname)
+    except ValueError:
+        address = None
+    if parsed.hostname.casefold() == "localhost" or (address is None and "." not in parsed.hostname):
+        raise IngestionError("invalid_link", "--link URL must use a public, fully qualified host")
+    if address is not None and not address.is_global:
+        raise IngestionError("invalid_link", "--link URL must not target a private or local address")
+    try:
+        host = parsed.hostname.encode("idna").decode("ascii").lower()
+    except UnicodeError:
+        raise IngestionError("invalid_link", "--link URL host is invalid") from None
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    default_port = (parsed.scheme.lower() == "http" and port == 80) or (
+        parsed.scheme.lower() == "https" and port == 443
+    )
+    netloc = host if port is None or default_port else f"{host}:{port}"
+    return urlunsplit((parsed.scheme.lower(), netloc, parsed.path or "/", parsed.query, parsed.fragment))
+
+
+def parse_explicit_links(values: Sequence[str]) -> tuple[ExplicitLink, ...]:
+    """Strictly parse and normalize repeatable ``TEXT=URL`` arguments."""
+    parsed: list[ExplicitLink] = []
+    labels: set[str] = set()
+    for value in values:
+        if _contains_control(value):
+            raise IngestionError("invalid_link", "--link must not contain control characters")
+        if "=" not in value:
+            raise IngestionError("invalid_link", "--link must use non-empty TEXT=URL values")
+        raw_label, raw_url = value.split("=", 1)
+        label = raw_label.strip()
+        if not label or not raw_url:
+            raise IngestionError("invalid_link", "--link must use non-empty TEXT=URL values")
+        if any(character in label for character in "<>"):
+            raise IngestionError("invalid_link", "--link TEXT must not contain HTML delimiters")
+        if label in labels:
+            raise IngestionError("invalid_link", "--link TEXT labels must be unique")
+        labels.add(label)
+        parsed.append(ExplicitLink(label, _normalize_explicit_destination(raw_url)))
+    return tuple(parsed)
+
+
+def embed_links(text: str, explicit_links: Sequence[ExplicitLink]) -> str:
+    """Embed mappings only when each label identifies one unambiguous text span."""
+    import html as html_mod
+
+    spans: list[tuple[int, int, ExplicitLink]] = []
+    for link in explicit_links:
+        occurrences = [match.span() for match in re.finditer(re.escape(link.label), text)]
+        if not occurrences:
+            raise IngestionError("invalid_link", f"--link TEXT label is absent from extracted body: {link.label!r}")
+        if len(occurrences) != 1:
+            raise IngestionError("invalid_link", f"--link TEXT label is ambiguous in extracted body: {link.label!r}")
+        spans.append((*occurrences[0], link))
+    spans.sort(key=lambda item: item[0])
+    if any(right_start < left_end for (_, left_end, _), (right_start, _, _) in zip(spans, spans[1:])):
+        raise IngestionError("invalid_link", "--link TEXT labels overlap in extracted body")
+    for start, end, link in reversed(spans):
+        safe_url = html_mod.escape(link.destination, quote=True)
+        text = text[:start] + f'<a href="{safe_url}">{link.label}</a>' + text[end:]
 
     # Remove numeric citation markers after embedding links.
     # Example PDF text: cited sentence.3
@@ -1296,21 +1388,30 @@ def embed_links(text: str, explicit_links: list[str]) -> str:
     text = re.sub(r"([A-Za-z”\)])([1-9]|1[0-9])(?=\s)", r"\1", text)
 
     # Convert raw URLs into links without changing visible URL text.
-    def repl(match: re.Match[str]) -> str:
-        url = match.group(0)
-        before = text[max(0, match.start() - 10):match.start()]
-        if 'href="' in before:
-            return url
-        clean = url.rstrip(".;,")
-        trail = url[len(clean):]
-        return f'<a href="{clean}">{clean}</a>{trail}'
+    def autolink(fragment: str) -> str:
+        def repl(match: re.Match[str]) -> str:
+            url = match.group(0)
+            clean = url.rstrip(".;,")
+            trail = url[len(clean):]
+            safe_url = html_mod.escape(clean, quote=True)
+            return f'<a href="{safe_url}">{clean}</a>{trail}'
 
-    return re.sub(r"(?<![\"=])https?://[^\s)]+", repl, text)
+        return re.sub(r"(?<![\"=])https?://[^\s)]+", repl, fragment)
+
+    # Never scan inside anchors just created above; URL labels must not become
+    # nested anchors and existing href attributes must remain opaque.
+    parts = re.split(r"(<a\b[^>]*>.*?</a>)", text, flags=re.I | re.S)
+    return "".join(part if re.fullmatch(r"<a\b[^>]*>.*?</a>", part, re.I | re.S) else autolink(part) for part in parts)
 
 
 def check_all_sources_embedded(text: str, pdf_links: list[tuple[str, str]]) -> None:
     """Block publication when a PDF citation destination is absent from the post."""
-    missing_urls = sorted({url for _, url in pdf_links if f'href="{url}"' not in text})
+    import html as html_mod
+
+    missing_urls = sorted({
+        url for _, url in pdf_links
+        if f'href="{html_mod.escape(url, quote=True)}"' not in text
+    })
     if missing_urls:
         raise IngestionError(
             "missing_citations",
@@ -1457,9 +1558,7 @@ def run(argv: Sequence[str] | None = None) -> Path:
         slug = validate_slug(args.slug if args.slug is not None else slugify(title))
         date = validate_date(args.date)
         output = validate_output(args.output or POSTS_DIR / f"{slug}.md")
-        for item in args.link:
-            if "=" not in item or not all(part.strip() for part in item.split("=", 1)):
-                raise IngestionError("invalid_link", "--link must use non-empty TEXT=URL values")
+        explicit_links = parse_explicit_links(args.link)
 
         extraction_error: BaseException | None = None
         try:
@@ -1469,8 +1568,10 @@ def run(argv: Sequence[str] | None = None) -> Path:
             pdf_links = extract_pdf_links(input_snapshot)
             body = parse_body(raw_text, title, args.keep_references)
             body = fix_extraction_artifacts(body)
+            # Explicit mappings are resolved against plain extracted prose before
+            # any generated anchor markup exists, preventing attribute matches.
+            body = embed_links(body, explicit_links)
             body = embed_footnote_links(body, footnote_url_map(pdf_links, raw_text))
-            body = embed_links(body, args.link)
             body = "\n\n".join(p.strip() for p in body.split("\n\n") if p.strip())
             if not body:
                 raise IngestionError("empty_extraction", "extraction produced no publishable body text")

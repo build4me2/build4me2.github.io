@@ -104,8 +104,17 @@ for human-readable and JSON audit reports.
 The command accepts only regular, non-symlink `.pdf` and UTF-8 `.txt` files of
 at most 25 MiB. The extension must match the file contents. Titles must be
 non-empty, dates must be valid ISO 8601 dates (or timezone-qualified timestamps),
-and slugs use only lowercase ASCII letters, digits, and single hyphens. Explicit
-`--output` paths must name a new `.md` file below this checkout's
+and slugs use only lowercase ASCII letters, digits, and single hyphens. Each
+repeatable `--link 'TEXT=URL'` mapping is parsed before extraction: its label must
+be non-empty and unique, and its destination must be an absolute HTTP(S) URL with
+a fully qualified public host, no credentials, whitespace, controls, malformed
+percent escapes, or HTML/quote delimiters. Scheme and host case, IDN hosts,
+default ports, and an empty path are normalized deterministically. After
+extraction every label must occur exactly once; absent, repeated, duplicate, or
+overlapping labels block publication. Valid destinations are HTML-escaped before
+attribute insertion, and matching is done before generated anchors exist, so a
+mapping cannot match or alter an HTML attribute. Explicit `--output` paths must
+name a new `.md` file below this checkout's
 `content/posts/` tree; output directories are never created and existing posts
 are never overwritten. Validation failures use stable `ERROR[category]: ...`
 diagnostics, return nonzero, and do not create an output file. After all

@@ -158,6 +158,61 @@ class IngestionFixtureTests(unittest.TestCase):
         destination.write_bytes(b"existing post\x00must remain unchanged")
         self.assert_failure_clean("output_exists", FIXTURES / "success.txt", destination)
 
+    def run_with_link(self, source: Path, value: str, destination: Path) -> Path:
+        real_validate = converter.validate_output
+        with mock.patch.object(
+            converter, "validate_output", side_effect=lambda path: real_validate(path, self.posts)
+        ):
+            return converter.run([
+                str(source), "--title", "Fixture Paper", "--date", "2026-01-02",
+                "--output", str(destination), "--link", value,
+            ])
+
+    def test_explicit_link_validation_failures_leave_transaction_clean(self) -> None:
+        source = self.root / "links.txt"
+        source.write_text("A unique cited sentence.\n", encoding="utf-8")
+        cases = (
+            "A unique cited sentence.=javascript:alert(1)",
+            "A unique cited sentence.=https://example.com/\" onclick=\"bad",
+            "A unique cited sentence.=https://user:secret@example.com/source",
+            "A unique cited sentence.=https://example.com/source\nheader",
+            "missing label=https://example.com/source",
+        )
+        for index, value in enumerate(cases):
+            destination = self.posts / f"invalid-link-{index}.md"
+            with self.subTest(value=value), self.assertRaises(converter.IngestionError) as caught:
+                self.run_with_link(source, value, destination)
+            self.assertEqual("invalid_link", caught.exception.category)
+            self.assertFalse(destination.exists())
+            self.assertEqual([], list(self.posts.rglob(".*.tmp")))
+
+    def test_ambiguous_explicit_label_does_not_publish(self) -> None:
+        source = self.root / "ambiguous.txt"
+        source.write_text("Repeated citation. Repeated citation.\n", encoding="utf-8")
+        destination = self.posts / "ambiguous.md"
+        with self.assertRaises(converter.IngestionError) as caught:
+            self.run_with_link(source, "Repeated citation=https://example.com/source", destination)
+        self.assertEqual("invalid_link", caught.exception.category)
+        self.assertIn("ambiguous", str(caught.exception))
+        self.assertFalse(destination.exists())
+
+    def test_valid_explicit_link_is_normalized_and_safely_embedded(self) -> None:
+        source = self.root / "valid-link.txt"
+        source.write_text("A unique cited sentence.\n", encoding="utf-8")
+        destination = self.posts / "valid-link.md"
+        self.run_with_link(
+            source,
+            "A unique cited sentence.=HTTPS://EXAMPLE.COM:443/source?first=1&second=2",
+            destination,
+        )
+        rendered = destination.read_text(encoding="utf-8")
+        self.assertIn(
+            '<a href="https://example.com/source?first=1&amp;second=2">A unique cited sentence.</a>',
+            rendered,
+        )
+        self.assertNotIn('onclick=', rendered)
+        self.assertEqual([destination], list(self.posts.glob("*.md")))
+
     @mock.patch.object(converter, "_run_pdf_tool")
     def test_controlled_pdf_success_installs_complete_post(self, tool: mock.Mock) -> None:
         tool.side_effect = [
