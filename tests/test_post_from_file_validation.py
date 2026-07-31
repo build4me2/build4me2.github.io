@@ -125,6 +125,32 @@ class PdfExtractionFailureTests(unittest.TestCase):
         self.assert_category("partial_extraction", lambda: converter.read_input(source))
 
     @mock.patch.object(converter, "_run_pdf_tool")
+    def test_each_reported_pdf_page_must_be_present_and_substantive(self, tool) -> None:
+        source = Path("paper.pdf")
+        padded_page = b"A" * 200
+        complete_page = b"Z" * 40
+        cases = (
+            (b"Pages: 3\n", padded_page + b"\x0c" + complete_page + b"\x0c", "page framing"),
+            (
+                b"Pages: 3\n",
+                padded_page + b"\x0c   \n\x0c" + complete_page + b"\x0c",
+                "page 2 appears incomplete (0 visible characters",
+            ),
+            (
+                b"Pages: 3\n",
+                padded_page + b"\x0cshort\x0c" + complete_page + b"\x0c",
+                "page 2 appears incomplete (5 visible characters",
+            ),
+        )
+        for info, extraction, diagnostic in cases:
+            with self.subTest(diagnostic=diagnostic):
+                tool.side_effect = [info, extraction]
+                with self.assertRaises(converter.IngestionError) as caught:
+                    converter.read_input(source)
+                self.assertEqual("partial_extraction", caught.exception.category)
+                self.assertIn(diagnostic, str(caught.exception))
+
+    @mock.patch.object(converter, "_run_pdf_tool")
     def test_missing_pdf_url_annotations_are_blocked(self, tool) -> None:
         tool.side_effect = [
             b"Page Type URL\n1 Annotation https://example.com/source\n",

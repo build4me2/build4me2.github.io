@@ -549,17 +549,31 @@ def read_input(source: Path | InputSnapshot) -> str:
     if visible_characters == 0:
         raise IngestionError("empty_extraction", "pdftotext extracted no visible text")
 
-    # Poppler terminates each extracted page with form feed. A mismatch means
-    # stdout was truncated despite a successful process exit. Sparse output is
-    # normally an image-only or damaged PDF and must be reviewed/OCRed first.
-    extracted_pages = text.count("\x0c")
-    if (pages > 1 and extracted_pages < pages) or (
-        visible_characters < pages * MIN_PDF_TEXT_CHARACTERS_PER_PAGE
-    ):
+    # In normal stdout mode Poppler terminates every page, including the last,
+    # with a form feed. Validate that framing before inspecting page contents:
+    # an aggregate character count cannot prove that every reported page was
+    # emitted, and text outside the final delimiter is not attributable to a
+    # page. A mismatch can indicate successful-but-truncated tool output.
+    page_chunks = text.split("\x0c")
+    extracted_pages = len(page_chunks) - 1
+    if extracted_pages != pages or page_chunks[-1].strip():
         raise IngestionError(
             "partial_extraction",
-            f"pdftotext output appears incomplete ({visible_characters} visible characters for {pages} pages)",
+            f"pdftotext page framing does not match pdfinfo "
+            f"({extracted_pages} page separator(s) for {pages} reported pages)",
         )
+
+    # Check each page independently. A long page must never be allowed to pad
+    # an empty or implausibly sparse page past an aggregate-length threshold.
+    for page_number, page_text in enumerate(page_chunks[:-1], 1):
+        page_visible_characters = len(re.findall(r"\S", page_text))
+        if page_visible_characters < MIN_PDF_TEXT_CHARACTERS_PER_PAGE:
+            raise IngestionError(
+                "partial_extraction",
+                f"pdftotext page {page_number} appears incomplete "
+                f"({page_visible_characters} visible characters; minimum is "
+                f"{MIN_PDF_TEXT_CHARACTERS_PER_PAGE})",
+            )
     return text
 
 

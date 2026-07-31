@@ -141,8 +141,9 @@ PDF ingestion requires `pdfinfo`, `pdftotext`, and `pdftohtml` from
 `poppler-utils`. Each executable is checked explicitly and each invocation has
 a 30-second timeout with captured, bounded diagnostics. A missing executable,
 nonzero exit (including corrupt/encrypted PDFs), timeout, non-UTF-8 tool output,
-empty text, an implausibly sparse/truncated page extraction, URL annotations
-reported by `pdfinfo` but absent from `pdftohtml`, or a recovered citation
+empty text, page-separator counts that disagree with `pdfinfo`, or any missing,
+empty, or implausibly sparse individual page (regardless of aggregate text length),
+URL annotations reported by `pdfinfo` but absent from `pdftohtml`, or a recovered citation
 destination that is not embedded in the converted body is a blocking error.
 These checks happen before the destination is created; do not bypass them—OCR,
 repair the source document, or supply exact `--link` mappings instead.

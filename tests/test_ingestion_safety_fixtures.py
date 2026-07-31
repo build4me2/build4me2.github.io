@@ -186,6 +186,22 @@ class IngestionFixtureTests(unittest.TestCase):
         atomic_create.assert_not_called()
         self.assertEqual([], list(self.posts.iterdir()))
 
+    @mock.patch.object(converter, "_atomic_create_post")
+    @mock.patch.object(converter, "extract_pdf_links")
+    @mock.patch.object(converter, "_run_pdf_tool")
+    def test_aggregate_padding_cannot_hide_an_empty_pdf_page_or_stage_output(
+        self, tool: mock.Mock, extract_links: mock.Mock, atomic_create: mock.Mock
+    ) -> None:
+        tool.side_effect = [
+            b"Pages: 3\n",
+            b"A" * 500 + b"\x0c  \n\x0c" + b"Z" * 500 + b"\x0c",
+        ]
+
+        self.assert_failure_clean("partial_extraction", FIXTURES / "synthetic.pdf")
+        extract_links.assert_not_called()
+        atomic_create.assert_not_called()
+        self.assertEqual([], list(self.posts.iterdir()))
+
     @mock.patch.object(converter, "_run_pdf_tool")
     def test_corrupt_empty_partial_and_invalid_tool_output_do_not_publish(self, tool: mock.Mock) -> None:
         tool.side_effect = converter.IngestionError("tool_failed", "pdfinfo exited with status 1: damaged")
