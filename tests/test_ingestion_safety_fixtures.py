@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import importlib.util
 import json
 import os
@@ -155,6 +156,69 @@ class IngestionFixtureTests(unittest.TestCase):
             (relocated_parent / "post.md").exists(),
             "post linked into the relocated parent was not retracted",
         )
+        self.assertEqual([], list(self.posts.rglob(".*.tmp")))
+
+    def test_controlled_post_link_verification_failure_is_fully_retracted(self) -> None:
+        parent = self.posts / "verification-parent"
+        parent.mkdir()
+        output_path = parent / "post.md"
+        target = converter.validate_output(output_path, self.posts)
+        verification_fault = converter.IngestionError(
+            "unsafe_output", "controlled post-link verification failure"
+        )
+        try:
+            with mock.patch.object(
+                converter, "_verify_post_link_installation", side_effect=verification_fault
+            ), self.assertRaises(converter.IngestionError) as caught:
+                converter._atomic_create_post(target, "complete validated post\n")
+        finally:
+            target.close()
+
+        self.assertIs(verification_fault, caught.exception)
+        self.assertFalse(output_path.exists())
+        self.assertEqual([], list(parent.iterdir()))
+        self.assertEqual([], list(self.posts.rglob(".*.tmp")))
+
+    def test_unlink_failure_after_relocation_commits_without_harming_existing_destination(self) -> None:
+        parent = self.posts / "unlink-parent"
+        parent.mkdir()
+        output_path = parent / "post.md"
+        target = converter.validate_output(output_path, self.posts)
+        relocated_parent = self.posts / "relocated-unlink-parent"
+        existing = b"existing canonical bytes\x00\xff"
+        installed = b"complete validated post\n"
+        real_link = converter._link_anonymous_file
+
+        def relocate_then_link(descriptor: int, parent_descriptor: int, name: str) -> int:
+            parent.rename(relocated_parent)
+            parent.mkdir()
+            output_path.write_bytes(existing)
+            return real_link(descriptor, parent_descriptor, name)
+
+        real_unlink = converter.os.unlink
+
+        def reject_only_transaction_unlink(path, *args, **kwargs):
+            if path == target.name and kwargs.get("dir_fd") is not None:
+                raise OSError(errno.EIO, "controlled unlink failure")
+            return real_unlink(path, *args, **kwargs)
+
+        try:
+            with (
+                mock.patch.object(
+                    converter, "_link_anonymous_file", side_effect=relocate_then_link
+                ),
+                mock.patch.object(converter.os, "unlink", side_effect=reject_only_transaction_unlink),
+            ):
+                # The exclusive link is the commit point when rollback cannot
+                # be guaranteed; a false failure must not invite a destructive retry.
+                converter._atomic_create_post(target, installed.decode("utf-8"))
+        finally:
+            target.close()
+
+        self.assertEqual(existing, output_path.read_bytes())
+        self.assertEqual(installed, (relocated_parent / "post.md").read_bytes())
+        self.assertEqual([output_path], list(parent.iterdir()))
+        self.assertEqual([relocated_parent / "post.md"], list(relocated_parent.iterdir()))
         self.assertEqual([], list(self.posts.rglob(".*.tmp")))
 
     def test_invalid_encoding_empty_and_unsupported_sources_do_not_publish(self) -> None:

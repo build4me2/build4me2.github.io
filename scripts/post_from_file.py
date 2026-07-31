@@ -1787,7 +1787,7 @@ def _link_anonymous_file(descriptor: int, parent_descriptor: int, name: str) -> 
 def _unlink_installed_inode(
     staged_descriptor: int, parent_descriptor: int, name: str
 ) -> None:
-    """Retract our link after a commit-boundary relocation, and nothing else."""
+    """Retract our link after a post-link verification fault, and nothing else."""
     try:
         staged_identity = _descriptor_identity(staged_descriptor)
         installed = os.stat(name, dir_fd=parent_descriptor, follow_symlinks=False)
@@ -1801,14 +1801,34 @@ def _unlink_installed_inode(
         ) from None
 
 
+def _verify_post_link_installation(descriptor: int, target: OutputTarget) -> None:
+    """Verify the canonical chain and installed inode after the commit link.
+
+    This deliberately small boundary is independently fault-injectable. Closing
+    its temporary directory descriptor is non-transactional and cannot turn a
+    verified installation into a failure.
+    """
+    rebound_descriptor = _reopen_verified_output_parent(
+        target, expected_output_descriptor=descriptor
+    )
+    try:
+        return
+    finally:
+        try:
+            os.close(rebound_descriptor)
+        except OSError:
+            pass
+
+
 def _install_anonymous_file(descriptor: int, target: OutputTarget) -> None:
     """Give an O_TMPFILE descriptor its sole name, without replacement.
 
     Linux does not provide a conditional link operation that also compares a
     directory inode with its pathname. Therefore verify the complete no-follow
-    chain on both sides of linkat. If the parent moves in the final syscall
-    window, remove only our just-linked inode through the retained descriptor
-    before reporting the relocation.
+    chain on both sides of linkat. A post-link fault is reported only after our
+    exact inode has been retracted. If retraction itself fails, the successful
+    exclusive link is the irrevocable commit and this function returns success:
+    it must never report failure while a complete new post may be publishable.
     """
     parent_descriptor = _reopen_verified_output_parent(target)
     try:
@@ -1822,20 +1842,19 @@ def _install_anonymous_file(descriptor: int, target: OutputTarget) -> None:
                 "output_write", f"cannot install output atomically: {os.strerror(error)}"
             )
 
-        rebound_descriptor = -1
         try:
-            rebound_descriptor = _reopen_verified_output_parent(
-                target, expected_output_descriptor=descriptor
-            )
-        except IngestionError:
-            _unlink_installed_inode(descriptor, parent_descriptor, target.name)
+            _verify_post_link_installation(descriptor, target)
+        except BaseException:
+            try:
+                _unlink_installed_inode(descriptor, parent_descriptor, target.name)
+            except BaseException:
+                # linkat already committed a complete, exclusively-created
+                # inode. Without a successful unlink there is no safe failure
+                # outcome: reporting one could prompt a retry while that inode
+                # remains publishable (possibly in a concurrently relocated
+                # parent). Commit therefore wins over an unprovable rollback.
+                return
             raise
-        finally:
-            if rebound_descriptor >= 0:
-                try:
-                    os.close(rebound_descriptor)
-                except OSError:
-                    pass
     finally:
         try:
             os.close(parent_descriptor)

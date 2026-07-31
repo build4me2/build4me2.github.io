@@ -147,10 +147,13 @@ the validated parent and the newly installed staging inode. Linux has no single
 conditional link operation that compares a directory inode with its pathname;
 if relocation occurs inside that final syscall window, the converter retracts
 only its own inode through the retained directory descriptor before reporting
-`ERROR[unsafe_output]`. Relocating or replacing a bound parent therefore leaves
-no post in either the old or replacement location. A destination created
-concurrently or already present remains unchanged. Every successful call returns
-the verified destination containing the sole complete installed file.
+`ERROR[unsafe_output]`. A post-link verification failure is reported only after
+that exact-inode unlink succeeds. If the unlink itself fails, rollback cannot be
+claimed: the already complete, exclusively linked inode is treated as the
+successful commit instead of reporting a false failure that could trigger an
+unsafe retry. Any concurrently created canonical destination remains unchanged
+byte-for-byte. Controlled fixtures cover both the ordinary retraction path and
+the commit-wins unlink-failure path across canonical and relocated directories.
 
 ## Extraction failure policy
 
