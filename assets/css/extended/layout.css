@@ -155,31 +155,7 @@ body::-webkit-scrollbar { display: none; }
 }
 .menu-theme-toggle button.theme-toggle svg { width: 17px; height: 17px; }
 
-/* Homepage identity and section framing. */
-.site-hero { padding: 18px 0 2px; }
-.site-hero h1 {
-    margin: 0;
-    color: var(--design-ink);
-    font-family: "Press Start 2P", ui-monospace, monospace;
-    font-size: clamp(2.1rem, 6.6vw, 5rem);
-    font-weight: 400;
-    line-height: 1.22;
-    letter-spacing: -0.055em;
-    text-transform: uppercase;
-}
-.site-hero p {
-    margin: 28px 0 0;
-    color: var(--design-ink-soft);
-    font-family: Audiowide, ui-sans-serif, sans-serif;
-    font-size: clamp(0.7rem, 1.25vw, 0.95rem);
-    line-height: 1.8;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-}
-.editorial-rule {
-    margin: 30px 0 38px;
-    border-top: 2px dashed var(--design-rule);
-}
+/* Homepage section framing. */
 .section-label {
     display: inline-block;
     margin: 0 0 38px;
@@ -307,32 +283,21 @@ body::-webkit-scrollbar { display: none; }
 .site-footer .social-icons a { display: inline-flex; color: var(--design-muted); transition: color 160ms ease; }
 .site-footer .social-icons a:hover { color: var(--design-ink); }
 .site-footer .social-icons svg { width: 19px; height: 19px; }
-.site-footer-copyright {
-    color: var(--design-muted);
-    font-family: "IBM Plex Mono", ui-monospace, monospace;
-    font-size: 0.72rem;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-}
-
 @media (max-width: 760px) {
     .main,
     .header-nav,
     .site-footer { width: min(100% - 32px, 1180px); }
     .main { padding-top: 30px; }
-    .header-nav { justify-content: center; padding: 14px 0; }
-    .logo { width: 100%; text-align: center; }
+    .header-nav { justify-content: space-between; padding: 14px 0; }
+    .logo { width: auto; text-align: left; }
     #menu { gap: 8px 17px; }
     #menu li a { font-size: 0.86rem; }
-    .site-hero h1 { font-size: clamp(1.9rem, 10vw, 3.2rem); }
-    .site-hero p { margin-top: 20px; }
     .paper-list-item { grid-template-columns: 1fr; gap: 9px; }
     .paper-list-item a::after { display: none; }
     .site-footer { flex-direction: column; justify-content: center; }
 }
 
 @media (prefers-reduced-motion: no-preference) {
-    .site-hero,
     .section-label,
     .paper-list { animation: editorial-reveal 520ms ease both; }
     .section-label { animation-delay: 70ms; }

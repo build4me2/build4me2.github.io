@@ -1,12 +1,7 @@
 {{- define "main" }}
 
 {{- if .IsHome }}
-<section class="site-hero" aria-labelledby="site-hero-title">
-  <h1 id="site-hero-title">Manisha Chand</h1>
-  <p>Essays · Technology · Law · Ethics</p>
-</section>
-<div class="editorial-rule" aria-hidden="true"></div>
-<h2 class="section-label">Essays</h2>
+<h1 class="section-label">Essays</h1>
 {{- else if .Title }}
 <header class="page-header editorial-page-header">
   {{- partial "breadcrumbs.html" . }}
