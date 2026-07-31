@@ -29,9 +29,9 @@
   },
   "protectedFiles": {
     "assets/css/extended/citations.css": "b163323a40a903921f0909ddb7a101197ef7945e85d6ed6996a1b2ea3e4b64d0",
-    "assets/css/extended/layout.css": "c004befdd5cd51c60e63cb151fb5675986f2e0724aae1155a91deabbe0601b8b",
+    "assets/css/extended/layout.css": "4d98a8539146268947ca73246bae60d58f4ed877790245db5d44ec629aeeea58",
     "hugo.toml": "a9d61d10a4335f70f07a0aa297499f43bb804e2cfd2cb33b86fec646f4ba0396",
-    "layouts/_default/list.html": "e68adcc0b72cfdfe6272b960333aab796ef3cc7984abaf46a4a30c0910acd767",
+    "layouts/_default/list.html": "d813005080e61342118b15c89f64b3bb167383b875166bbc987326f5a5c3bdbf",
     "layouts/_default/single.html": "78c35ca5e3fcd6a457990f8e0dc019171fcb9810b87d88bb3b97549677d87421",
     "layouts/partials/breadcrumbs.html": "4f68e9c898f0efcb2d544b28481bc79efb3296a8dfb3d8b3c3fd9f82a1c58529",
     "layouts/partials/citations.html": "90a8d4f106f4c4f1a7aaa94ca863cd6a84ffd8786beed8c73c394ef8cf6f4ad7",
@@ -227,7 +227,6 @@
   ],
   "renderedContract": {
     "homeMarkers": [
-      "<h1.section-label>",
       "<ul.paper-list>"
     ],
     "articleMarkers": [
@@ -242,7 +241,7 @@
       "<button#theme-toggle.theme-toggle>",
       "<footer.footer.site-footer>"
     ],
-    "homeStructureSha256": "34109eaf885cccbc2e3fcff3e8501123d1f9a4d46ba3ec58c1daf706a8ab34d3"
+    "homeStructureSha256": "a86e556c77e263105e5a729e66850f220c46600300e0f56e4dc6457684ec3795"
   },
-  "presentationCapturedFrom": "85c4d4de86f7a145f907af8f4befb5b73111369f"
+  "presentationCapturedFrom": "0c117ec56ea19f72e5622b1a2f975556e84dd861"
 }
