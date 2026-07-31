@@ -204,7 +204,12 @@ body::-webkit-scrollbar { display: none; }
 
 /* Long-form article typography. */
 .post-single { max-width: 900px; margin: 0 auto; }
-.article-back { margin: -32px 0 8px; }
+.article-back {
+    position: relative;
+    top: 0.4cm;
+    left: -0.3cm;
+    margin: -32px 0 8px;
+}
 .article-back a {
     display: inline-flex;
     color: var(--design-ink);
