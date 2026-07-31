@@ -100,7 +100,7 @@ body::-webkit-scrollbar { display: none; }
 .logo a {
     color: var(--design-ink);
     font-family: "Press Start 2P", ui-monospace, monospace;
-    font-size: clamp(0.94rem, 1.82vw, 1.24rem);
+    font-size: clamp(1.22rem, 2.37vw, 1.61rem);
     font-weight: 400;
     line-height: 1.5;
     letter-spacing: -0.035em;
@@ -204,15 +204,21 @@ body::-webkit-scrollbar { display: none; }
 
 /* Long-form article typography. */
 .post-single { max-width: 900px; margin: 0 auto; }
-.article-back { margin: -32px 0 8px; }
+.article-back { margin: -38px 0 8px; }
 .article-back a {
-    display: inline-block;
+    display: inline-flex;
     color: var(--design-ink);
-    font-family: "IBM Plex Mono", ui-monospace, monospace;
-    font-size: 2.34rem;
-    font-weight: 700;
-    line-height: 1;
+    line-height: 0;
     text-decoration: none;
+}
+.article-back svg {
+    width: 4rem;
+    height: 2rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 3.5;
 }
 .article-back a:hover,
 .article-back a:focus-visible { color: var(--design-ink); }
@@ -222,7 +228,7 @@ body::-webkit-scrollbar { display: none; }
     margin: 0;
     color: var(--design-ink);
     font-family: Tinos, "Times New Roman", serif;
-    font-size: clamp(1.32rem, 3.24vw, 2.58rem);
+    font-size: clamp(1.06rem, 2.59vw, 2.06rem);
     font-weight: 700;
     line-height: 1.02;
     letter-spacing: -0.035em;

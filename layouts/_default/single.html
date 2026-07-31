@@ -1,6 +1,10 @@
 {{- define "main" }}
 <nav class="article-back" aria-label="Back navigation">
-  <a href="{{ site.Home.RelPermalink }}" aria-label="Back to all essays" title="Back to all essays">&lt;--</a>
+  <a href="{{ site.Home.RelPermalink }}" aria-label="Back to all essays" title="Back to all essays">
+    <svg viewBox="0 0 64 32" aria-hidden="true" focusable="false">
+      <path d="M62 16H4M18 2 4 16l14 14" />
+    </svg>
+  </a>
 </nav>
 <article class="post-single">
   <header class="post-header">
