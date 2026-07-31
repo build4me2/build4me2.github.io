@@ -29,7 +29,7 @@
   },
   "protectedFiles": {
     "assets/css/extended/citations.css": "b163323a40a903921f0909ddb7a101197ef7945e85d6ed6996a1b2ea3e4b64d0",
-    "assets/css/extended/layout.css": "b265729b1ff52adb1cbc7984d4e9de1e3b80ce5cf518c6bc4748393ddfd15864",
+    "assets/css/extended/layout.css": "6339c4ea79138c4631ba60a78b1ce6e7be95fff4ad91efcce298d32f1fc6436a",
     "hugo.toml": "a9d61d10a4335f70f07a0aa297499f43bb804e2cfd2cb33b86fec646f4ba0396",
     "layouts/_default/list.html": "e68adcc0b72cfdfe6272b960333aab796ef3cc7984abaf46a4a30c0910acd767",
     "layouts/_default/single.html": "78c35ca5e3fcd6a457990f8e0dc019171fcb9810b87d88bb3b97549677d87421",
@@ -244,5 +244,5 @@
     ],
     "homeStructureSha256": "34109eaf885cccbc2e3fcff3e8501123d1f9a4d46ba3ec58c1daf706a8ab34d3"
   },
-  "presentationCapturedFrom": "9feeef81f8e978a7e0edb5ebdd8353adfc28ca6c"
+  "presentationCapturedFrom": "77e2b8bca7b81963e7dc18ad32e45eb4f164f94d"
 }
