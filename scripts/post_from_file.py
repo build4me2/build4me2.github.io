@@ -1652,7 +1652,9 @@ def _validate_staged_post(descriptor: int, expected: bytes) -> None:
         ) from None
 
 
-def _reopen_verified_output_parent(target: OutputTarget) -> int:
+def _reopen_verified_output_parent(
+    target: OutputTarget, *, expected_output_descriptor: int | None = None
+) -> int:
     """Rebind the validated containment chain and require the same parent inode.
 
     A retained directory descriptor alone remains usable after its pathname is
@@ -1677,10 +1679,14 @@ def _reopen_verified_output_parent(target: OutputTarget) -> int:
                 "unsafe_output", "output parent changed or was relocated after validation"
             )
         try:
-            os.stat(target.name, dir_fd=descriptor, follow_symlinks=False)
+            installed = os.stat(target.name, dir_fd=descriptor, follow_symlinks=False)
         except FileNotFoundError:
             pass
         else:
+            if expected_output_descriptor is not None:
+                expected_identity = _descriptor_identity(expected_output_descriptor)
+                if (installed.st_dev, installed.st_ino) == expected_identity:
+                    return descriptor
             raise IngestionError(
                 "output_exists", f"refusing to overwrite existing post: {target.path}"
             )
@@ -1697,30 +1703,70 @@ def _reopen_verified_output_parent(target: OutputTarget) -> int:
         ) from None
 
 
+def _link_anonymous_file(descriptor: int, parent_descriptor: int, name: str) -> int:
+    """Call linkat(AT_EMPTY_PATH), returning zero or the captured errno."""
+    at_empty_path = 0x1000
+    libc = ctypes.CDLL(None, use_errno=True)
+    linkat = libc.linkat
+    linkat.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_int]
+    linkat.restype = ctypes.c_int
+    if linkat(descriptor, b"", parent_descriptor, os.fsencode(name), at_empty_path) == 0:
+        return 0
+    return ctypes.get_errno()
+
+
+def _unlink_installed_inode(
+    staged_descriptor: int, parent_descriptor: int, name: str
+) -> None:
+    """Retract our link after a commit-boundary relocation, and nothing else."""
+    try:
+        staged_identity = _descriptor_identity(staged_descriptor)
+        installed = os.stat(name, dir_fd=parent_descriptor, follow_symlinks=False)
+        if (installed.st_dev, installed.st_ino) != staged_identity:
+            raise OSError(errno.ESTALE, "installed output identity changed")
+        os.unlink(name, dir_fd=parent_descriptor)
+    except OSError as exc:
+        raise IngestionError(
+            "output_write",
+            f"cannot retract output after parent relocation: {exc.strerror or exc}",
+        ) from None
+
+
 def _install_anonymous_file(descriptor: int, target: OutputTarget) -> None:
     """Give an O_TMPFILE descriptor its sole name, without replacement.
 
-    Python's os.link does not expose Linux linkat(AT_EMPTY_PATH), so use the
-    libc wrapper. The validated path is rebound immediately before this commit
-    point; relocation therefore fails while the staged inode is still unnamed.
+    Linux does not provide a conditional link operation that also compares a
+    directory inode with its pathname. Therefore verify the complete no-follow
+    chain on both sides of linkat. If the parent moves in the final syscall
+    window, remove only our just-linked inode through the retained descriptor
+    before reporting the relocation.
     """
     parent_descriptor = _reopen_verified_output_parent(target)
     try:
-        at_empty_path = 0x1000
-        libc = ctypes.CDLL(None, use_errno=True)
-        linkat = libc.linkat
-        linkat.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_int]
-        linkat.restype = ctypes.c_int
-        if linkat(descriptor, b"", parent_descriptor, os.fsencode(target.name), at_empty_path) == 0:
-            return
-        error = ctypes.get_errno()
-        if error == errno.EEXIST:
+        error = _link_anonymous_file(descriptor, parent_descriptor, target.name)
+        if error:
+            if error == errno.EEXIST:
+                raise IngestionError(
+                    "output_exists", f"refusing to overwrite existing post: {target.path}"
+                )
             raise IngestionError(
-                "output_exists", f"refusing to overwrite existing post: {target.path}"
+                "output_write", f"cannot install output atomically: {os.strerror(error)}"
             )
-        raise IngestionError(
-            "output_write", f"cannot install output atomically: {os.strerror(error)}"
-        )
+
+        rebound_descriptor = -1
+        try:
+            rebound_descriptor = _reopen_verified_output_parent(
+                target, expected_output_descriptor=descriptor
+            )
+        except IngestionError:
+            _unlink_installed_inode(descriptor, parent_descriptor, target.name)
+            raise
+        finally:
+            if rebound_descriptor >= 0:
+                try:
+                    os.close(rebound_descriptor)
+                except OSError:
+                    pass
     finally:
         try:
             os.close(parent_descriptor)
@@ -1787,9 +1833,9 @@ def _atomic_create_post(output: Path | OutputTarget, post: str) -> None:
 
         _validate_staged_post(descriptor, expected)
 
-        # Keep this as the final fallible transaction operation. Descriptor
-        # closes below are deliberately non-reporting because they cannot alter
-        # the installed name or leave a named staging artifact.
+        # The installer verifies containment before and after linkat and
+        # retracts its exact inode if the parent moves in that syscall window.
+        # Descriptor closes below are deliberately non-reporting.
         _install_anonymous_file(descriptor, target)
     finally:
         if descriptor >= 0:

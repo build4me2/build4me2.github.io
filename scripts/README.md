@@ -141,14 +141,16 @@ parents are opened component-by-component without following links and retained
 through installation; anonymous staging and verification are performed relative
 to that bound directory descriptor. At the commit boundary, the posts root and
 complete no-follow parent chain are reopened and required to retain their
-validated device/inode identities and containment before installation. Relocating
-or replacing a bound parent therefore fails closed while staging is still
-anonymous, leaving no post in either the old or replacement location. A
-destination created concurrently or already present remains unchanged.
-Installation is the final fallible transaction operation: there is no staging
-name to unlink and no post-install cleanup or rollback whose failure could leave
-debris or turn an installed post into a reported failure. Every successful call
-returns the verified destination containing the sole complete installed file.
+validated device/inode identities and containment before installation. The same
+chain is rebound again immediately after `linkat` and must still identify both
+the validated parent and the newly installed staging inode. Linux has no single
+conditional link operation that compares a directory inode with its pathname;
+if relocation occurs inside that final syscall window, the converter retracts
+only its own inode through the retained directory descriptor before reporting
+`ERROR[unsafe_output]`. Relocating or replacing a bound parent therefore leaves
+no post in either the old or replacement location. A destination created
+concurrently or already present remains unchanged. Every successful call returns
+the verified destination containing the sole complete installed file.
 
 ## Extraction failure policy
 

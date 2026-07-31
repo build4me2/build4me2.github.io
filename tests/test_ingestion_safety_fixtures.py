@@ -124,6 +124,39 @@ class IngestionFixtureTests(unittest.TestCase):
         self.assertFalse((held_parent / "post.md").exists(), "relocated directory received the post")
         self.assertEqual([], list(self.posts.rglob(".*.tmp")))
 
+    def test_parent_relocation_between_final_rebinding_and_linkat_is_retracted(self) -> None:
+        parent = self.posts / "commit-parent"
+        parent.mkdir()
+        output_path = parent / "post.md"
+        target = converter.validate_output(output_path, self.posts)
+        relocated_parent = self.posts / "relocated-at-linkat"
+        real_link = converter._link_anonymous_file
+        raced = False
+
+        def relocate_then_link(descriptor: int, parent_descriptor: int, name: str) -> int:
+            nonlocal raced
+            raced = True
+            parent.rename(relocated_parent)
+            parent.mkdir()
+            return real_link(descriptor, parent_descriptor, name)
+
+        try:
+            with mock.patch.object(
+                converter, "_link_anonymous_file", side_effect=relocate_then_link
+            ), self.assertRaises(converter.IngestionError) as caught:
+                converter._atomic_create_post(target, "complete validated post\n")
+        finally:
+            target.close()
+
+        self.assertTrue(raced, "fixture did not reach the final linkat window")
+        self.assertEqual("unsafe_output", caught.exception.category)
+        self.assertFalse(output_path.exists(), "replacement directory received the post")
+        self.assertFalse(
+            (relocated_parent / "post.md").exists(),
+            "post linked into the relocated parent was not retracted",
+        )
+        self.assertEqual([], list(self.posts.rglob(".*.tmp")))
+
     def test_invalid_encoding_empty_and_unsupported_sources_do_not_publish(self) -> None:
         invalid = self.root / "invalid.txt"
         invalid.write_bytes(b"valid prefix\n\xffinvalid")
