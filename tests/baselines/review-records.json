@@ -22,10 +22,10 @@
       "id": "monochrome-retro-editorial-design",
       "kind": "presentation-migration",
       "before": "8daa5220b19ec7e529d4354c77707bb882c9bce3",
-      "after": "24a97faa18a9247279765c6a773e6d7d48e419f1",
+      "after": "02645e79a68ca19bacbb893b656ccbe70302e24f",
       "reason": "Adopt the user-approved portfolio-inspired typography and editorial structure with a black and gray palette while preserving article content and routes.",
       "verificationEvidence": [
-        "The reviewed design commits change only presentation CSS/templates and Hugo navigation/theme settings; the final revisions remove the homepage hero, navigation links, and copyright, then center the remaining footer social links and reduce both article-page and homepage essay-title typography to 60% of their prior scales, remove the Essays badge, lighten the dark background to a gray-black, enlarge the header brand to 130%, add a compact top-left article back link, soften light mode with gray-black headings and a one-shade off-white page/header background, and replace the article back label with a 150%-sized bold arrow aligned beneath the header brand at the user's request.",
+        "The reviewed design commits change only presentation CSS/templates and Hugo navigation/theme settings; the final revisions remove the homepage hero, navigation links, and copyright, then center the remaining footer social links and reduce both article-page and homepage essay-title typography to 60% of their prior scales, remove the Essays badge, lighten the dark background to a gray-black, enlarge the header brand to 130%, add a compact top-left article back link, soften light mode with gray-black headings and a one-shade off-white page/header background, and replace the article back label with a bold ASCII <-- arrow aligned beneath the header brand, double its size, and move it closer to the header at the user's request.",
         "Desktop, mobile, and article screenshots were inspected from a local clean Hugo render; no content/posts file changed in the design commit.",
         "The new baseline remains independently anchored to the original content commit for prose, routes, front matter, and citation evidence."
       ],
