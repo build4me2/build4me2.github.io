@@ -1,8 +1,8 @@
 {{- define "main" }}
+<nav class="article-back" aria-label="Back navigation">
+  <a href="{{ site.Home.RelPermalink }}" aria-label="Back to all essays" title="Back to all essays">←</a>
+</nav>
 <article class="post-single">
-  <nav class="article-back" aria-label="Back navigation">
-    <a href="{{ site.Home.RelPermalink }}" aria-label="Back to all essays">← Back</a>
-  </nav>
   <header class="post-header">
     {{ partial "breadcrumbs.html" . }}
     <h1 class="post-title entry-hint-parent">{{ .Title }}</h1>
