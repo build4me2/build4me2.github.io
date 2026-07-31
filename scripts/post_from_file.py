@@ -297,6 +297,15 @@ def validate_input(path: Path, max_bytes: int = MAX_INPUT_BYTES) -> InputSnapsho
         if not stat.S_ISREG(opened.st_mode) or (opened.st_dev, opened.st_ino) != (info.st_dev, info.st_ino):
             os.close(fd)
             raise IngestionError("unsafe_input", "input changed while it was being validated")
+        # The pathname inspection is only an early rejection. A writer can grow
+        # the same inode between lstat() and open(), so enforce the limit on the
+        # descriptor that supplies the snapshot bytes as well.
+        if opened.st_size > max_bytes:
+            os.close(fd)
+            raise IngestionError(
+                "input_too_large",
+                f"input is {opened.st_size} bytes; maximum is {max_bytes} bytes",
+            )
         with os.fdopen(os.dup(fd), "rb") as stream:
             head = stream.read(max_bytes + 1)
         after = os.fstat(fd)

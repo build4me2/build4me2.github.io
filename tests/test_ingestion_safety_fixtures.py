@@ -81,6 +81,30 @@ class IngestionFixtureTests(unittest.TestCase):
         finally:
             snapshot.close()
 
+    def test_same_inode_growth_between_inspection_and_open_is_oversized(self) -> None:
+        source = self.root / "growing.txt"
+        source.write_bytes(b"123")
+        original_identity = (source.stat().st_dev, source.stat().st_ino)
+        real_open = os.open
+        grew_source = False
+
+        def grow_then_open(path, flags, *args, **kwargs):
+            nonlocal grew_source
+            if not grew_source and Path(path) == source:
+                grew_source = True
+                with source.open("ab") as stream:
+                    stream.write(b"4")
+            return real_open(path, flags, *args, **kwargs)
+
+        with mock.patch.object(converter.os, "open", side_effect=grow_then_open):
+            with self.assertRaises(converter.IngestionError) as caught:
+                converter.validate_input(source, max_bytes=3)
+
+        self.assertTrue(grew_source)
+        self.assertEqual(original_identity, (source.stat().st_dev, source.stat().st_ino))
+        self.assertEqual("input_too_large", caught.exception.category)
+        self.assertEqual("input is 4 bytes; maximum is 3 bytes", str(caught.exception))
+
     def test_output_parent_relocation_fails_closed_without_installation(self) -> None:
         parent = self.posts / "bound-parent"
         parent.mkdir()
