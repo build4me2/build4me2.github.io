@@ -22,10 +22,10 @@
       "id": "monochrome-retro-editorial-design",
       "kind": "presentation-migration",
       "before": "8daa5220b19ec7e529d4354c77707bb882c9bce3",
-      "after": "355076b3ffc90c0f990d54596a87b6840cbf864f",
+      "after": "478ecbf4ac32dce63111c0e4b63f2f49ca874ab2",
       "reason": "Adopt the user-approved portfolio-inspired typography and editorial structure with a black and gray palette while preserving article content and routes.",
       "verificationEvidence": [
-        "The reviewed design commits change only presentation CSS/templates and Hugo navigation/theme settings; the final revisions remove the homepage hero, navigation links, and copyright, then center the remaining footer social links and reduce both article-page and homepage essay-title typography to 60% of their prior scales, remove the Essays badge, lighten the dark background to a gray-black, enlarge the header brand to 130%, add a compact top-left article back link, soften light mode with gray-black headings and a one-shade off-white page/header background, and replace the article back label with a connected SVG arrow beneath the header brand, then reduce it to 80%, lower it slightly, and add a directional hover animation; enlarge the brand to 130% and reduce article titles to 80% at the user's request.",
+        "The reviewed design commits change only presentation CSS/templates and Hugo navigation/theme settings; the final revisions remove the homepage hero, navigation links, and copyright, then center the remaining footer social links and reduce both article-page and homepage essay-title typography to 60% of their prior scales, remove the Essays badge, lighten the dark background to a gray-black, enlarge the header brand to 130%, add a compact top-left article back link, soften light mode with gray-black headings and a one-shade off-white page/header background, and replace the article back label with a left-facing glyph matching the homepage essay arrows at 150% of their size, lower it slightly, and add a directional hover animation; enlarge the brand to 130% and reduce article titles to 80% at the user's request.",
         "Desktop, mobile, and article screenshots were inspected from a local clean Hugo render; no content/posts file changed in the design commit.",
         "The new baseline remains independently anchored to the original content commit for prose, routes, front matter, and citation evidence."
       ],
