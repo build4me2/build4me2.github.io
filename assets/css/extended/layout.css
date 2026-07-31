@@ -204,7 +204,7 @@ body::-webkit-scrollbar { display: none; }
 
 /* Long-form article typography. */
 .post-single { max-width: 900px; margin: 0 auto; }
-.article-back { margin: -38px 0 8px; }
+.article-back { margin: -32px 0 8px; }
 .article-back a {
     display: inline-flex;
     color: var(--design-ink);
@@ -212,16 +212,19 @@ body::-webkit-scrollbar { display: none; }
     text-decoration: none;
 }
 .article-back svg {
-    width: 4rem;
-    height: 2rem;
+    width: 3.2rem;
+    height: 1.6rem;
     fill: none;
     stroke: currentColor;
     stroke-linecap: round;
     stroke-linejoin: round;
     stroke-width: 3.5;
+    transition: transform 160ms ease;
 }
 .article-back a:hover,
 .article-back a:focus-visible { color: var(--design-ink); }
+.article-back a:hover svg,
+.article-back a:focus-visible svg { transform: translateX(-6px); }
 .post-header { margin: 0 0 42px; padding-bottom: 34px; border-bottom: 2px dashed var(--design-rule); }
 .post-title,
 .editorial-page-header h1 {
