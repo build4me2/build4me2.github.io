@@ -208,23 +208,20 @@ body::-webkit-scrollbar { display: none; }
 .article-back a {
     display: inline-flex;
     color: var(--design-ink);
-    line-height: 0;
+    font-family: Inter, sans-serif;
+    font-size: 1.58rem;
+    font-weight: 700;
+    line-height: 1;
     text-decoration: none;
 }
-.article-back svg {
-    width: 3.2rem;
-    height: 1.6rem;
-    fill: none;
-    stroke: currentColor;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-    stroke-width: 3.5;
+.article-back a span {
+    display: inline-block;
     transition: transform 160ms ease;
 }
 .article-back a:hover,
 .article-back a:focus-visible { color: var(--design-ink); }
-.article-back a:hover svg,
-.article-back a:focus-visible svg { transform: translateX(-6px); }
+.article-back a:hover span,
+.article-back a:focus-visible span { transform: translateX(-6px); }
 .post-header { margin: 0 0 42px; padding-bottom: 34px; border-bottom: 2px dashed var(--design-rule); }
 .post-title,
 .editorial-page-header h1 {
