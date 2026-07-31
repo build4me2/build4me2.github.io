@@ -29,10 +29,10 @@
   },
   "protectedFiles": {
     "assets/css/extended/citations.css": "b163323a40a903921f0909ddb7a101197ef7945e85d6ed6996a1b2ea3e4b64d0",
-    "assets/css/extended/layout.css": "0ed4f95632f533aa8d686cdb8b5f2c9675c1a4e145215f974a10be44234ff936",
+    "assets/css/extended/layout.css": "1c4cf5c53a897c8cedcc631c75b1b505d32234972c9bcc035e932d9cac1a23f7",
     "hugo.toml": "a9d61d10a4335f70f07a0aa297499f43bb804e2cfd2cb33b86fec646f4ba0396",
     "layouts/_default/list.html": "d813005080e61342118b15c89f64b3bb167383b875166bbc987326f5a5c3bdbf",
-    "layouts/_default/single.html": "e339dead03479fe1a4184f292d5f2a38529e9ef4bc1e9df00801b618491258a6",
+    "layouts/_default/single.html": "02c97a4ee3d8eb25d434670765013311604b3217a90ab4cde3ee7d32cdba40ac",
     "layouts/partials/breadcrumbs.html": "4f68e9c898f0efcb2d544b28481bc79efb3296a8dfb3d8b3c3fd9f82a1c58529",
     "layouts/partials/citations.html": "90a8d4f106f4c4f1a7aaa94ca863cd6a84ffd8786beed8c73c394ef8cf6f4ad7",
     "layouts/partials/extend_head.html": "1259d3505395de96afe5aadc9a1f1f9634576942aca6d4c04f0ea0e4e84847fc",
@@ -109,7 +109,7 @@
         "https://cybersecurityfordemocracy.org/",
         "https://www.hrw.org/report/2023/12/21/metas-broken-promises/systemic-censorship-palestine-content-instagram-and"
       ],
-      "renderedStructureSha256": "65b459cf5132c111002943bcb5ca7b337712c86347de4873d77b55f2acab223b",
+      "renderedStructureSha256": "043451d14ac73511e64facaf0f4408b97ce950b2593456c3928fdacfa596ec9a",
       "proseSegmentSha256": [
         "288671f4893ac5889d79011802a147d3a2df80f572af3fb05238d4f4ce9a0d18",
         "e21b71b67a2a6d3f834967f636fdf7e6fcd8ae62dc1c2e264aae2c6dd4841a4f",
@@ -138,7 +138,7 @@
         "https://www.pearson.com/en-us/subject-catalog/p/gift-of-fire-social-legal-and-ethical-issues-for-computing-technology/P200000003391",
         "https://www.pearson.com/en-us/subject-catalog/p/gift-of-fire-social-legal-and-ethical-issues-for-computing-technology/P200000003391"
       ],
-      "renderedStructureSha256": "6f37d55cf5b503105d9598bcfa8886fb106b19c58b1f528c72b9531e0b9f53a9",
+      "renderedStructureSha256": "09d5aec6394ee576cf05b8a43725588032af33d85bf8c426f5aed9f8fe32b066",
       "proseSegmentSha256": [
         "9125a6b8db99b524975438250d55affaec4be30039f996677cb4802bf6f1ff7f",
         "6b680c622c5a179962be455ff0c8a7e5fa40ebd4f5391ca20442a0c398aa2ae1",
@@ -188,7 +188,7 @@
         "https://www.congress.gov/bill/112th-congress/senate-bill/3642",
         "https://www.congress.gov/bill/114th-congress/senate-bill/1890"
       ],
-      "renderedStructureSha256": "7344c505ef93aa91db7ea7ce0fa5826e694cda15fab2f160698252d8fd2befa5",
+      "renderedStructureSha256": "2c18338cd9850119568d5f3be066ac4e77917854e1dfd4c0b79ebbf6d069e7cd",
       "proseSegmentSha256": [
         "73cf9aa27cece3a92414f743992a1b3bdc3e3522eebc0f9ae5b84be8b3d1ec72",
         "594add8bc068112136b4b79de500ea694d75197f9fce3527c1dd02f4cd94d2d7",
@@ -215,7 +215,7 @@
         "https://conversationswithbillkristol.org/transcript/peter-thiel-transcript/",
         "https://eng.vt.edu/magazine/stories/fall-2023/ai.html"
       ],
-      "renderedStructureSha256": "8dee5eed8fe240434450ff88271fe274496c8b1da6694f29cef9a70570f223e3",
+      "renderedStructureSha256": "a83a068b253b38ed16ae6e197610895c764579a54c5c3903f59628c4b53ffa68",
       "proseSegmentSha256": [
         "682c41070a96615ed536ba0006a07382ce31829cb845b47a33e49bbc0b9fc9ed",
         "8b79d778faf74f5791022ef3901839896359b347d027e28169fdbd0ab045f0b3",
@@ -243,5 +243,5 @@
     ],
     "homeStructureSha256": "a86e556c77e263105e5a729e66850f220c46600300e0f56e4dc6457684ec3795"
   },
-  "presentationCapturedFrom": "02645e79a68ca19bacbb893b656ccbe70302e24f"
+  "presentationCapturedFrom": "adf0bfa0e693e9c1f8de6e32c670b8e8ee68e69c"
 }
