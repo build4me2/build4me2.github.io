@@ -103,13 +103,31 @@ class PdfExtractionFailureTests(unittest.TestCase):
         self.assert_category("missing_tool", lambda: converter._run_pdf_tool("pdftotext", []))
 
     @mock.patch.object(converter.shutil, "which", return_value="/usr/bin/pdftotext")
-    @mock.patch.object(converter.subprocess, "run")
-    def test_tool_timeout_and_nonzero_exit_are_explicit(self, run, _which) -> None:
-        run.side_effect = subprocess.TimeoutExpired("pdftotext", 30, stderr=b"stalled")
-        self.assert_category("tool_timeout", lambda: converter._run_pdf_tool("pdftotext", []))
-        run.side_effect = None
-        run.return_value = subprocess.CompletedProcess([], 7, b"", b"broken object")
-        self.assert_category("tool_failed", lambda: converter._run_pdf_tool("pdftotext", []))
+    def test_tool_timeout_and_nonzero_exit_are_explicit(self, _which) -> None:
+        timed_process = mock.Mock(pid=12345, returncode=-15)
+        timed_process.communicate.side_effect = [
+            subprocess.TimeoutExpired("pdftotext", 30, stderr=b"stalled"),
+            (b"", b"stalled"),
+            (b"", b"stalled"),
+        ]
+        with (
+            mock.patch.object(converter.subprocess, "Popen", return_value=timed_process) as popen,
+            mock.patch.object(converter.os, "killpg") as kill_group,
+        ):
+            self.assert_category("tool_timeout", lambda: converter._run_pdf_tool("pdftotext", []))
+        self.assertTrue(popen.call_args.kwargs["start_new_session"])
+        self.assertEqual(
+            [
+                mock.call(12345, converter.signal.SIGTERM),
+                mock.call(12345, converter.signal.SIGKILL),
+            ],
+            kill_group.call_args_list,
+        )
+
+        failed_process = mock.Mock(returncode=7)
+        failed_process.communicate.return_value = (b"", b"broken object")
+        with mock.patch.object(converter.subprocess, "Popen", return_value=failed_process):
+            self.assert_category("tool_failed", lambda: converter._run_pdf_tool("pdftotext", []))
 
     @mock.patch.object(converter, "_run_pdf_tool")
     def test_unreadable_pdf_is_reported_as_corrupt(self, tool) -> None:

@@ -154,8 +154,11 @@ invalid bytes. UTF-16/UTF-32 and other encodings, malformed UTF-8, and NUL bytes
 therefore fail with `ERROR[encoding_error]`.
 
 PDF ingestion requires `pdfinfo`, `pdftotext`, and `pdftohtml` from
-`poppler-utils`. Each executable is checked explicitly and each invocation has
-a 30-second timeout with captured, bounded diagnostics. A missing executable,
+`poppler-utils`. Each executable is checked explicitly and each invocation runs
+in a new process group with a 30-second timeout and captured, bounded diagnostics.
+On timeout the complete group (including tool-spawned descendants) receives a
+bounded graceful termination interval followed by a forced kill and bounded reap;
+cleanup never waits indefinitely on a descendant holding an output pipe. A missing executable,
 nonzero exit (including corrupt/encrypted PDFs), timeout, non-UTF-8 tool output,
 empty text, page-separator counts that disagree with `pdfinfo`, or any missing,
 empty, or implausibly sparse individual page (regardless of aggregate text length),

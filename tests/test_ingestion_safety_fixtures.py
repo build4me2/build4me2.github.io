@@ -356,6 +356,16 @@ class PdfToolDoubleTests(unittest.TestCase):
             self.assertEqual("tool_failed", failed.exception.category)
             self.assertIn("status 23: controlled extraction failure", str(failed.exception))
 
+    def assert_process_gone(self, pid: int) -> None:
+        for _ in range(100):
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                return
+            import time
+            time.sleep(0.01)
+        self.fail(f"controlled process {pid} survived timeout cleanup")
+
     def test_hanging_tool_times_out_and_is_terminated(self) -> None:
         with tempfile.TemporaryDirectory(prefix="tool-double-") as temporary:
             root = Path(temporary)
@@ -374,9 +384,42 @@ class PdfToolDoubleTests(unittest.TestCase):
                     converter._run_pdf_tool("pdftotext", [])
             self.assertEqual("tool_timeout", timed_out.exception.category)
             self.assertTrue(pid_file.exists(), "the controlled tool never started")
-            pid = int(pid_file.read_text(encoding="utf-8"))
-            with self.assertRaises(ProcessLookupError):
-                os.kill(pid, 0)
+            self.assert_process_gone(int(pid_file.read_text(encoding="utf-8")))
+
+    def test_timeout_terminates_descendant_that_ignores_graceful_signal(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="tool-tree-double-") as temporary:
+            root = Path(temporary)
+            parent_pid_file = root / "parent-pid"
+            child_pid_file = root / "child-pid"
+            child_program = (
+                "import os,pathlib,signal,time;"
+                "signal.signal(signal.SIGTERM,signal.SIG_IGN);"
+                "os.close(1);os.close(2);"
+                f"pathlib.Path({str(child_pid_file)!r}).write_text(str(os.getpid()));"
+                "time.sleep(60)"
+            )
+            tool = self.make_tool(
+                root,
+                "import os, pathlib, subprocess, sys, time\n"
+                f"pathlib.Path({str(parent_pid_file)!r}).write_text(str(os.getpid()))\n"
+                f"subprocess.Popen([sys.executable, '-c', {child_program!r}])\n"
+                f"child_pid = pathlib.Path({str(child_pid_file)!r})\n"
+                "while not child_pid.exists(): time.sleep(0.01)\n"
+                "time.sleep(60)\n",
+            )
+            with (
+                mock.patch.object(converter.shutil, "which", return_value=str(tool)),
+                mock.patch.object(converter, "PDF_TOOL_TIMEOUT_SECONDS", 0.2),
+                mock.patch.object(converter, "PDF_TOOL_CLEANUP_TIMEOUT_SECONDS", 0.1),
+            ):
+                with self.assertRaises(converter.IngestionError) as timed_out:
+                    converter._run_pdf_tool("pdftotext", [])
+
+            self.assertEqual("tool_timeout", timed_out.exception.category)
+            self.assertTrue(parent_pid_file.exists(), "the controlled parent never started")
+            self.assertTrue(child_pid_file.exists(), "the controlled descendant never started")
+            self.assert_process_gone(int(parent_pid_file.read_text(encoding="utf-8")))
+            self.assert_process_gone(int(child_pid_file.read_text(encoding="utf-8")))
 
 
 if __name__ == "__main__":

@@ -24,6 +24,7 @@ import ipaddress
 import os
 import re
 import shutil
+import signal
 import stat
 import subprocess
 import sys
@@ -72,6 +73,7 @@ MAX_INPUT_BYTES = 25 * 1024 * 1024
 MAX_TITLE_LENGTH = 300
 MAX_SLUG_LENGTH = 100
 PDF_TOOL_TIMEOUT_SECONDS = 30
+PDF_TOOL_CLEANUP_TIMEOUT_SECONDS = 1
 MAX_TOOL_DIAGNOSTIC_CHARS = 1000
 MIN_PDF_TEXT_CHARACTERS_PER_PAGE = 20
 SLUG_PATTERN = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
@@ -481,36 +483,103 @@ def _diagnostic(stderr: bytes | str) -> str:
     return detail
 
 
+def _close_process_pipes(process: subprocess.Popen[bytes]) -> None:
+    """Close captured pipes without allowing cleanup errors to hide a timeout."""
+    for stream in (process.stdout, process.stderr):
+        if stream is not None:
+            try:
+                stream.close()
+            except OSError:
+                pass
+
+
+def _terminate_pdf_tool_group(
+    process: subprocess.Popen[bytes], timeout_stderr: bytes | None
+) -> bytes:
+    """Terminate an isolated tool process group without unbounded waiting.
+
+    Poppler itself is normally a single process, but wrappers and malformed-tool
+    fixtures can spawn descendants which retain the captured pipe descriptors.
+    Killing only the direct child would then leave ``communicate`` blocked.  All
+    descendants inherit the new process group, so signal that group, allow one
+    bounded graceful interval, then force the complete group down.
+    """
+    stderr = timeout_stderr or b""
+    for group_signal in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(process.pid, group_signal)
+        except ProcessLookupError:
+            pass
+        except OSError:
+            # The group should exist because Popen created a new session. If a
+            # platform/runtime race prevents group signalling, still target the
+            # direct process; every subsequent wait remains bounded.
+            try:
+                process.send_signal(group_signal)
+            except OSError:
+                pass
+        try:
+            _, cleanup_stderr = process.communicate(
+                timeout=PDF_TOOL_CLEANUP_TIMEOUT_SECONDS
+            )
+            stderr = cleanup_stderr or stderr
+            if group_signal == signal.SIGKILL:
+                return stderr
+            # Reaping the direct process and reaching EOF does not prove that a
+            # descendant which closed its inherited pipes also exited. Continue
+            # to SIGKILL the group after the graceful interval in all cases.
+        except subprocess.TimeoutExpired as exc:
+            if exc.stderr:
+                stderr = exc.stderr
+
+    # A hostile descendant could deliberately leave the process group and keep
+    # an inherited pipe open. Never perform an unbounded final communicate in
+    # that case. Closing our pipe ends and making one bounded direct-child reap
+    # attempt keeps timeout handling finite.
+    _close_process_pipes(process)
+    try:
+        process.kill()
+    except OSError:
+        pass
+    try:
+        process.wait(timeout=PDF_TOOL_CLEANUP_TIMEOUT_SECONDS)
+    except (subprocess.TimeoutExpired, OSError):
+        pass
+    return stderr
+
+
 def _run_pdf_tool(
     tool: str, arguments: list[str], *, pass_fds: tuple[int, ...] = ()
 ) -> bytes:
-    """Run one required Poppler tool with bounded resources and diagnostics."""
+    """Run one required Poppler tool in an isolated, timeout-safe process group."""
     executable = shutil.which(tool)
     if executable is None:
         raise IngestionError("missing_tool", f"required PDF tool '{tool}' was not found; install poppler-utils")
     try:
-        result = subprocess.run(
+        process = subprocess.Popen(
             [executable, *arguments],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            timeout=PDF_TOOL_TIMEOUT_SECONDS,
-            check=False,
             pass_fds=pass_fds,
+            start_new_session=True,
         )
+    except OSError as exc:
+        raise IngestionError("tool_failed", f"could not execute {tool}: {exc.strerror or exc}") from None
+    try:
+        stdout, stderr = process.communicate(timeout=PDF_TOOL_TIMEOUT_SECONDS)
     except subprocess.TimeoutExpired as exc:
-        detail = _diagnostic(exc.stderr or b"")
+        stderr = _terminate_pdf_tool_group(process, exc.stderr)
+        detail = _diagnostic(stderr)
         raise IngestionError(
             "tool_timeout",
             f"{tool} exceeded the {PDF_TOOL_TIMEOUT_SECONDS}-second timeout ({detail})",
         ) from None
-    except OSError as exc:
-        raise IngestionError("tool_failed", f"could not execute {tool}: {exc.strerror or exc}") from None
-    if result.returncode != 0:
+    if process.returncode != 0:
         raise IngestionError(
             "tool_failed",
-            f"{tool} exited with status {result.returncode}: {_diagnostic(result.stderr)}",
+            f"{tool} exited with status {process.returncode}: {_diagnostic(stderr)}",
         )
-    return result.stdout
+    return stdout
 
 
 def _decode_tool_output(tool: str, output: bytes) -> str:
