@@ -138,13 +138,17 @@ extraction pass. The snapshot is closed before publication. A lifecycle failure
 uses `ERROR[snapshot_cleanup]` and blocks publication, while cleanup can never
 replace an earlier extraction diagnostic. Output
 parents are opened component-by-component without following links and retained
-through installation; anonymous staging, verification, and installation are all
-performed relative to that bound directory descriptor. A destination created
-concurrently or already present remains unchanged, and replacing an output parent
-pathname cannot redirect the post. Installation is the final fallible transaction
-operation: there is no staging name to unlink and no post-install cleanup or
-rollback whose failure could leave debris or turn an installed post into a
-reported failure.
+through installation; anonymous staging and verification are performed relative
+to that bound directory descriptor. At the commit boundary, the posts root and
+complete no-follow parent chain are reopened and required to retain their
+validated device/inode identities and containment before installation. Relocating
+or replacing a bound parent therefore fails closed while staging is still
+anonymous, leaving no post in either the old or replacement location. A
+destination created concurrently or already present remains unchanged.
+Installation is the final fallible transaction operation: there is no staging
+name to unlink and no post-install cleanup or rollback whose failure could leave
+debris or turn an installed post into a reported failure. Every successful call
+returns the verified destination containing the sole complete installed file.
 
 ## Extraction failure policy
 

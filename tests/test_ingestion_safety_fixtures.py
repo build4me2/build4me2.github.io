@@ -81,7 +81,7 @@ class IngestionFixtureTests(unittest.TestCase):
         finally:
             snapshot.close()
 
-    def test_output_parent_replacement_cannot_redirect_installation(self) -> None:
+    def test_output_parent_relocation_fails_closed_without_installation(self) -> None:
         parent = self.posts / "bound-parent"
         parent.mkdir()
         output_path = parent / "post.md"
@@ -90,12 +90,14 @@ class IngestionFixtureTests(unittest.TestCase):
         parent.rename(held_parent)
         parent.mkdir()
         try:
-            converter._atomic_create_post(target, "complete validated post\n")
+            with self.assertRaises(converter.IngestionError) as caught:
+                converter._atomic_create_post(target, "complete validated post\n")
         finally:
             target.close()
 
+        self.assertEqual("unsafe_output", caught.exception.category)
         self.assertFalse(output_path.exists(), "replacement directory received the post")
-        self.assertEqual("complete validated post\n", (held_parent / "post.md").read_text())
+        self.assertFalse((held_parent / "post.md").exists(), "relocated directory received the post")
         self.assertEqual([], list(self.posts.rglob(".*.tmp")))
 
     def test_invalid_encoding_empty_and_unsupported_sources_do_not_publish(self) -> None:

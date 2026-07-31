@@ -389,12 +389,26 @@ def validate_date(value: str | None) -> str:
 
 
 class OutputTarget:
-    """A destination name bound to its already-open, no-follow parent directory."""
+    """A destination bound to one validated parent and containment chain."""
 
-    def __init__(self, path: Path, parent_descriptor: int, name: str) -> None:
+    def __init__(
+        self,
+        path: Path,
+        parent_descriptor: int,
+        name: str,
+        *,
+        root_path: Path | None = None,
+        root_identity: tuple[int, int] | None = None,
+        parent_parts: tuple[str, ...] = (),
+        parent_identity: tuple[int, int] | None = None,
+    ) -> None:
         self.path = path
         self.parent_descriptor = parent_descriptor
         self.name = name
+        self.root_path = root_path if root_path is not None else path.parent.absolute()
+        self.root_identity = root_identity or _descriptor_identity(parent_descriptor)
+        self.parent_parts = parent_parts
+        self.parent_identity = parent_identity or _descriptor_identity(parent_descriptor)
 
     def __eq__(self, other: object) -> bool:
         return self.path == other
@@ -419,6 +433,11 @@ def _open_directory(path: Path, *, dir_fd: int | None = None) -> int:
     flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_DIRECTORY", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0)
     return os.open(path, flags, dir_fd=dir_fd)
+
+
+def _descriptor_identity(descriptor: int) -> tuple[int, int]:
+    info = os.fstat(descriptor)
+    return info.st_dev, info.st_ino
 
 
 def validate_output(path: Path, posts_dir: Path = POSTS_DIR) -> OutputTarget:
@@ -446,8 +465,10 @@ def validate_output(path: Path, posts_dir: Path = POSTS_DIR) -> OutputTarget:
     except ValueError:
         raise IngestionError("unsafe_output", f"output must use a path below {posts_root}") from None
     descriptor = -1
+    root_identity: tuple[int, int] | None = None
     try:
         descriptor = _open_directory(posts_root)
+        root_identity = _descriptor_identity(descriptor)
         for part in relative.parts[:-1]:
             next_descriptor = _open_directory(Path(part), dir_fd=descriptor)
             os.close(descriptor)
@@ -468,7 +489,16 @@ def validate_output(path: Path, posts_dir: Path = POSTS_DIR) -> OutputTarget:
         raise IngestionError(
             "unsafe_output", f"cannot bind output parent without following links: {exc.strerror or exc}"
         ) from None
-    return OutputTarget(candidate, descriptor, relative.name)
+    assert root_identity is not None
+    return OutputTarget(
+        candidate,
+        descriptor,
+        relative.name,
+        root_path=posts_root,
+        root_identity=root_identity,
+        parent_parts=tuple(relative.parts[:-1]),
+        parent_identity=_descriptor_identity(descriptor),
+    )
 
 
 def _diagnostic(stderr: bytes | str) -> str:
@@ -1609,29 +1639,80 @@ def _validate_staged_post(descriptor: int, expected: bytes) -> None:
         ) from None
 
 
+def _reopen_verified_output_parent(target: OutputTarget) -> int:
+    """Rebind the validated containment chain and require the same parent inode.
+
+    A retained directory descriptor alone remains usable after its pathname is
+    renamed. That property must not turn a relocation into publication at a
+    destination other than the path returned to the caller. Reopening every
+    no-follow component at the commit boundary proves that the configured root
+    and parent still have their validated identities and containment relation.
+    """
+    descriptor = -1
+    try:
+        descriptor = _open_directory(target.root_path)
+        if _descriptor_identity(descriptor) != target.root_identity:
+            raise IngestionError(
+                "unsafe_output", "output posts root changed after validation"
+            )
+        for part in target.parent_parts:
+            next_descriptor = _open_directory(Path(part), dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = next_descriptor
+        if _descriptor_identity(descriptor) != target.parent_identity:
+            raise IngestionError(
+                "unsafe_output", "output parent changed or was relocated after validation"
+            )
+        try:
+            os.stat(target.name, dir_fd=descriptor, follow_symlinks=False)
+        except FileNotFoundError:
+            pass
+        else:
+            raise IngestionError(
+                "output_exists", f"refusing to overwrite existing post: {target.path}"
+            )
+        return descriptor
+    except IngestionError:
+        if descriptor >= 0:
+            os.close(descriptor)
+        raise
+    except OSError:
+        if descriptor >= 0:
+            os.close(descriptor)
+        raise IngestionError(
+            "unsafe_output", "output parent changed or was relocated after validation"
+        ) from None
+
+
 def _install_anonymous_file(descriptor: int, target: OutputTarget) -> None:
     """Give an O_TMPFILE descriptor its sole name, without replacement.
 
     Python's os.link does not expose Linux linkat(AT_EMPTY_PATH), so use the
-    libc wrapper. This syscall is the transaction's commit point: before it the
-    inode has no directory entry; after it the complete inode has exactly the
-    destination entry.
+    libc wrapper. The validated path is rebound immediately before this commit
+    point; relocation therefore fails while the staged inode is still unnamed.
     """
-    at_empty_path = 0x1000
-    libc = ctypes.CDLL(None, use_errno=True)
-    linkat = libc.linkat
-    linkat.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_int]
-    linkat.restype = ctypes.c_int
-    if linkat(descriptor, b"", target.parent_descriptor, os.fsencode(target.name), at_empty_path) == 0:
-        return
-    error = ctypes.get_errno()
-    if error == errno.EEXIST:
+    parent_descriptor = _reopen_verified_output_parent(target)
+    try:
+        at_empty_path = 0x1000
+        libc = ctypes.CDLL(None, use_errno=True)
+        linkat = libc.linkat
+        linkat.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_int]
+        linkat.restype = ctypes.c_int
+        if linkat(descriptor, b"", parent_descriptor, os.fsencode(target.name), at_empty_path) == 0:
+            return
+        error = ctypes.get_errno()
+        if error == errno.EEXIST:
+            raise IngestionError(
+                "output_exists", f"refusing to overwrite existing post: {target.path}"
+            )
         raise IngestionError(
-            "output_exists", f"refusing to overwrite existing post: {target.path}"
+            "output_write", f"cannot install output atomically: {os.strerror(error)}"
         )
-    raise IngestionError(
-        "output_write", f"cannot install output atomically: {os.strerror(error)}"
-    )
+    finally:
+        try:
+            os.close(parent_descriptor)
+        except OSError:
+            pass
 
 
 def _atomic_create_post(output: Path | OutputTarget, post: str) -> None:
