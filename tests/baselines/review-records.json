@@ -22,10 +22,10 @@
       "id": "monochrome-retro-editorial-design",
       "kind": "presentation-migration",
       "before": "8daa5220b19ec7e529d4354c77707bb882c9bce3",
-      "after": "b9d495208bd3cf2f5e4ab0a649349b31a7ee2cb3",
+      "after": "9feeef81f8e978a7e0edb5ebdd8353adfc28ca6c",
       "reason": "Adopt the user-approved portfolio-inspired typography and editorial structure with a black and gray palette while preserving article content and routes.",
       "verificationEvidence": [
-        "The reviewed design commits change only presentation CSS/templates and Hugo navigation/theme settings; the final revision removes the homepage hero, navigation links, and copyright at the user's request.",
+        "The reviewed design commits change only presentation CSS/templates and Hugo navigation/theme settings; the final revisions remove the homepage hero, navigation links, and copyright, then center the remaining footer social links at the user's request.",
         "Desktop, mobile, and article screenshots were inspected from a local clean Hugo render; no content/posts file changed in the design commit.",
         "The new baseline remains independently anchored to the original content commit for prose, routes, front matter, and citation evidence."
       ],
