@@ -24,12 +24,14 @@ from collections import Counter
 import ipaddress
 import os
 import re
+import selectors
 import shutil
 import signal
 import stat
 import subprocess
 import sys
 import tempfile
+import time
 import tomllib
 from datetime import datetime, timezone
 from pathlib import Path
@@ -75,6 +77,12 @@ MAX_TITLE_LENGTH = 300
 MAX_SLUG_LENGTH = 100
 PDF_TOOL_TIMEOUT_SECONDS = 30
 PDF_TOOL_CLEANUP_TIMEOUT_SECONDS = 1
+# Poppler output is attacker-influenced decompressed data. Keep both pipes
+# bounded in memory while draining them concurrently so neither can deadlock the
+# child. stderr only supplies a short diagnostic; stdout allows a generous but
+# finite expansion over the maximum accepted input size.
+MAX_PDF_TOOL_STDOUT_BYTES = 64 * 1024 * 1024
+MAX_PDF_TOOL_STDERR_BYTES = 64 * 1024
 MAX_TOOL_DIAGNOSTIC_CHARS = 1000
 MIN_PDF_TEXT_CHARACTERS_PER_PAGE = 20
 SLUG_PATTERN = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
@@ -524,7 +532,7 @@ def _diagnostic(stderr: bytes | str) -> str:
 
 
 def _close_process_pipes(process: subprocess.Popen[bytes]) -> None:
-    """Close captured pipes without allowing cleanup errors to hide a timeout."""
+    """Close captured pipes without allowing cleanup errors to hide a failure."""
     for stream in (process.stdout, process.stderr):
         if stream is not None:
             try:
@@ -533,49 +541,90 @@ def _close_process_pipes(process: subprocess.Popen[bytes]) -> None:
                 pass
 
 
-def _terminate_pdf_tool_group(
-    process: subprocess.Popen[bytes], timeout_stderr: bytes | None
-) -> bytes:
-    """Terminate an isolated tool process group without unbounded waiting.
-
-    Poppler itself is normally a single process, but wrappers and malformed-tool
-    fixtures can spawn descendants which retain the captured pipe descriptors.
-    Killing only the direct child would then leave ``communicate`` blocked.  All
-    descendants inherit the new process group, so signal that group, allow one
-    bounded graceful interval, then force the complete group down.
-    """
-    stderr = timeout_stderr or b""
-    for group_signal in (signal.SIGTERM, signal.SIGKILL):
+def _read_pdf_tool_pipes(
+    selector: selectors.BaseSelector,
+    buffers: dict[str, bytearray],
+) -> bool:
+    """Drain all currently ready pipe data and report a bounded-buffer overflow."""
+    limits = {
+        "stdout": MAX_PDF_TOOL_STDOUT_BYTES,
+        "stderr": MAX_PDF_TOOL_STDERR_BYTES,
+    }
+    overflow = False
+    # Sorting makes simultaneous stdout/stderr readiness deterministic.
+    for key, _ in sorted(selector.select(timeout=0), key=lambda event: event[0].data):
+        stream_name = key.data
         try:
-            os.killpg(process.pid, group_signal)
-        except ProcessLookupError:
-            pass
+            chunk = os.read(key.fd, 64 * 1024)
+        except BlockingIOError:
+            continue
         except OSError:
-            # The group should exist because Popen created a new session. If a
-            # platform/runtime race prevents group signalling, still target the
-            # direct process; every subsequent wait remains bounded.
+            chunk = b""
+        if not chunk:
             try:
-                process.send_signal(group_signal)
-            except OSError:
+                selector.unregister(key.fileobj)
+            except (KeyError, ValueError):
                 pass
-        try:
-            _, cleanup_stderr = process.communicate(
-                timeout=PDF_TOOL_CLEANUP_TIMEOUT_SECONDS
-            )
-            stderr = cleanup_stderr or stderr
-            if group_signal == signal.SIGKILL:
-                return stderr
-            # Reaping the direct process and reaching EOF does not prove that a
-            # descendant which closed its inherited pipes also exited. Continue
-            # to SIGKILL the group after the graceful interval in all cases.
-        except subprocess.TimeoutExpired as exc:
-            if exc.stderr:
-                stderr = exc.stderr
+            continue
+        buffer = buffers[stream_name]
+        remaining = max(0, limits[stream_name] - len(buffer))
+        buffer.extend(chunk[:remaining])
+        if len(chunk) > remaining:
+            overflow = True
+    return overflow
 
-    # A hostile descendant could deliberately leave the process group and keep
-    # an inherited pipe open. Never perform an unbounded final communicate in
-    # that case. Closing our pipe ends and making one bounded direct-child reap
-    # attempt keeps timeout handling finite.
+
+def _pump_pdf_tool(
+    process: subprocess.Popen[bytes],
+    selector: selectors.BaseSelector,
+    buffers: dict[str, bytearray],
+    deadline: float,
+    *,
+    stop_on_overflow: bool,
+) -> str:
+    """Concurrently drain pipes until completion, deadline, or bounded overflow."""
+    while True:
+        if _read_pdf_tool_pipes(selector, buffers) and stop_on_overflow:
+            return "overflow"
+        if process.poll() is not None and not selector.get_map():
+            return "complete"
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return "timeout"
+        # A short bounded sleep also notices a child which exits without output.
+        selector.select(timeout=min(remaining, 0.05))
+
+
+def _signal_pdf_tool_group(process: subprocess.Popen[bytes], group_signal: int) -> None:
+    try:
+        os.killpg(process.pid, group_signal)
+    except ProcessLookupError:
+        pass
+    except OSError:
+        try:
+            process.send_signal(group_signal)
+        except OSError:
+            pass
+
+
+def _terminate_pdf_tool_group(
+    process: subprocess.Popen[bytes],
+    selector: selectors.BaseSelector,
+    buffers: dict[str, bytearray],
+) -> None:
+    """Terminate the isolated group while continuing bounded concurrent drains."""
+    for group_signal in (signal.SIGTERM, signal.SIGKILL):
+        _signal_pdf_tool_group(process, group_signal)
+        _pump_pdf_tool(
+            process,
+            selector,
+            buffers,
+            time.monotonic() + PDF_TOOL_CLEANUP_TIMEOUT_SECONDS,
+            stop_on_overflow=False,
+        )
+
+    # A hostile descendant can escape the group while retaining a pipe. Closing
+    # our ends and using only a bounded direct-child reap keeps cleanup finite.
     _close_process_pipes(process)
     try:
         process.kill()
@@ -585,13 +634,12 @@ def _terminate_pdf_tool_group(
         process.wait(timeout=PDF_TOOL_CLEANUP_TIMEOUT_SECONDS)
     except (subprocess.TimeoutExpired, OSError):
         pass
-    return stderr
 
 
 def _run_pdf_tool(
     tool: str, arguments: list[str], *, pass_fds: tuple[int, ...] = ()
 ) -> bytes:
-    """Run one required Poppler tool in an isolated, timeout-safe process group."""
+    """Run Poppler with bounded concurrent output draining and group timeout."""
     executable = shutil.which(tool)
     if executable is None:
         raise IngestionError("missing_tool", f"required PDF tool '{tool}' was not found; install poppler-utils")
@@ -605,21 +653,42 @@ def _run_pdf_tool(
         )
     except OSError as exc:
         raise IngestionError("tool_failed", f"could not execute {tool}: {exc.strerror or exc}") from None
+    assert process.stdout is not None and process.stderr is not None
+    selector = selectors.DefaultSelector()
+    buffers = {"stdout": bytearray(), "stderr": bytearray()}
     try:
-        stdout, stderr = process.communicate(timeout=PDF_TOOL_TIMEOUT_SECONDS)
-    except subprocess.TimeoutExpired as exc:
-        stderr = _terminate_pdf_tool_group(process, exc.stderr)
-        detail = _diagnostic(stderr)
-        raise IngestionError(
-            "tool_timeout",
-            f"{tool} exceeded the {PDF_TOOL_TIMEOUT_SECONDS}-second timeout ({detail})",
-        ) from None
-    if process.returncode != 0:
-        raise IngestionError(
-            "tool_failed",
-            f"{tool} exited with status {process.returncode}: {_diagnostic(stderr)}",
+        for stream_name, stream in (("stdout", process.stdout), ("stderr", process.stderr)):
+            os.set_blocking(stream.fileno(), False)
+            selector.register(stream, selectors.EVENT_READ, stream_name)
+        result = _pump_pdf_tool(
+            process,
+            selector,
+            buffers,
+            time.monotonic() + PDF_TOOL_TIMEOUT_SECONDS,
+            stop_on_overflow=True,
         )
-    return stdout
+        if result != "complete":
+            _terminate_pdf_tool_group(process, selector, buffers)
+            detail = _diagnostic(bytes(buffers["stderr"]))
+            if result == "overflow":
+                raise IngestionError(
+                    "tool_output_limit",
+                    f"{tool} exceeded the bounded subprocess output limit ({detail})",
+                )
+            raise IngestionError(
+                "tool_timeout",
+                f"{tool} exceeded the {PDF_TOOL_TIMEOUT_SECONDS}-second timeout ({detail})",
+            )
+        stderr = bytes(buffers["stderr"])
+        if process.returncode != 0:
+            raise IngestionError(
+                "tool_failed",
+                f"{tool} exited with status {process.returncode}: {_diagnostic(stderr)}",
+            )
+        return bytes(buffers["stdout"])
+    finally:
+        selector.close()
+        _close_process_pipes(process)
 
 
 def _decode_tool_output(tool: str, output: bytes) -> str:

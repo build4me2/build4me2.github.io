@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import importlib.util
-import subprocess
+import sys
 import tempfile
+import textwrap
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -102,32 +103,90 @@ class PdfExtractionFailureTests(unittest.TestCase):
     def test_required_tool_must_exist(self, _which) -> None:
         self.assert_category("missing_tool", lambda: converter._run_pdf_tool("pdftotext", []))
 
-    @mock.patch.object(converter.shutil, "which", return_value="/usr/bin/pdftotext")
-    def test_tool_timeout_and_nonzero_exit_are_explicit(self, _which) -> None:
-        timed_process = mock.Mock(pid=12345, returncode=-15)
-        timed_process.communicate.side_effect = [
-            subprocess.TimeoutExpired("pdftotext", 30, stderr=b"stalled"),
-            (b"", b"stalled"),
-            (b"", b"stalled"),
-        ]
-        with (
-            mock.patch.object(converter.subprocess, "Popen", return_value=timed_process) as popen,
-            mock.patch.object(converter.os, "killpg") as kill_group,
-        ):
-            self.assert_category("tool_timeout", lambda: converter._run_pdf_tool("pdftotext", []))
-        self.assertTrue(popen.call_args.kwargs["start_new_session"])
-        self.assertEqual(
-            [
-                mock.call(12345, converter.signal.SIGTERM),
-                mock.call(12345, converter.signal.SIGKILL),
-            ],
-            kill_group.call_args_list,
+    def _tool_double(self, directory: Path, name: str, body: str) -> str:
+        executable = directory / name
+        executable.write_text(
+            f"#!{sys.executable}\n" + textwrap.dedent(body), encoding="utf-8"
         )
+        executable.chmod(0o755)
+        return str(executable)
 
-        failed_process = mock.Mock(returncode=7)
-        failed_process.communicate.return_value = (b"", b"broken object")
-        with mock.patch.object(converter.subprocess, "Popen", return_value=failed_process):
-            self.assert_category("tool_failed", lambda: converter._run_pdf_tool("pdftotext", []))
+    def test_tool_timeout_and_nonzero_exit_are_explicit(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            hanging = self._tool_double(
+                root,
+                "hanging-tool",
+                """
+                import sys, time
+                print("stalled", file=sys.stderr, flush=True)
+                time.sleep(60)
+                """,
+            )
+            with (
+                mock.patch.object(converter.shutil, "which", return_value=hanging),
+                mock.patch.object(converter, "PDF_TOOL_TIMEOUT_SECONDS", 0.15),
+                mock.patch.object(converter, "PDF_TOOL_CLEANUP_TIMEOUT_SECONDS", 0.05),
+            ):
+                with self.assertRaises(converter.IngestionError) as caught:
+                    converter._run_pdf_tool("pdftotext", [])
+            self.assertEqual("tool_timeout", caught.exception.category)
+            self.assertIn("stalled", str(caught.exception))
+
+            failed = self._tool_double(
+                root,
+                "failed-tool",
+                """
+                import sys
+                print("broken object", file=sys.stderr)
+                raise SystemExit(7)
+                """,
+            )
+            with mock.patch.object(converter.shutil, "which", return_value=failed):
+                with self.assertRaises(converter.IngestionError) as caught:
+                    converter._run_pdf_tool("pdftotext", [])
+            self.assertEqual("tool_failed", caught.exception.category)
+            self.assertIn("broken object", str(caught.exception))
+
+    def test_flooding_hanging_tool_is_bounded_and_installs_no_post(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            posts = root / "posts"
+            posts.mkdir()
+            source = root / "paper.pdf"
+            source.write_bytes(b"%PDF-1.7\nfixture\n")
+            flooding = self._tool_double(
+                root,
+                "flooding-tool",
+                """
+                import os, sys, time
+                print("flood marker", file=sys.stderr, flush=True)
+                chunk = b"x" * 65536
+                while True:
+                    os.write(sys.stdout.fileno(), chunk)
+                time.sleep(60)
+                """,
+            )
+            destination = posts / "bounded-output.md"
+            validate_output = converter.validate_output
+            with (
+                mock.patch.object(converter.shutil, "which", return_value=flooding),
+                mock.patch.object(converter, "POSTS_DIR", posts),
+                mock.patch.object(
+                    converter, "validate_output",
+                    side_effect=lambda path: validate_output(path, posts_dir=posts),
+                ),
+                mock.patch.object(converter, "MAX_PDF_TOOL_STDOUT_BYTES", 4096),
+                mock.patch.object(converter, "MAX_PDF_TOOL_STDERR_BYTES", 4096),
+                mock.patch.object(converter, "PDF_TOOL_TIMEOUT_SECONDS", 2),
+                mock.patch.object(converter, "PDF_TOOL_CLEANUP_TIMEOUT_SECONDS", 0.05),
+            ):
+                with self.assertRaises(converter.IngestionError) as caught:
+                    converter.run([str(source), "--title", "Bounded Output"])
+            self.assertEqual("tool_output_limit", caught.exception.category)
+            self.assertIn("flood marker", str(caught.exception))
+            self.assertFalse(destination.exists())
+            self.assertEqual([], list(posts.iterdir()))
 
     @mock.patch.object(converter, "_run_pdf_tool")
     def test_unreadable_pdf_is_reported_as_corrupt(self, tool) -> None:

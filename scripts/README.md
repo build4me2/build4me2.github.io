@@ -161,8 +161,12 @@ therefore fail with `ERROR[encoding_error]`.
 
 PDF ingestion requires `pdfinfo`, `pdftotext`, and `pdftohtml` from
 `poppler-utils`. Each executable is checked explicitly and each invocation runs
-in a new process group with a 30-second timeout and captured, bounded diagnostics.
-On timeout the complete group (including tool-spawned descendants) receives a
+in a new process group with a 30-second timeout. Standard output and standard
+error are drained concurrently throughout execution into fixed-size buffers (64
+MiB and 64 KiB respectively), so a flooding or mutually blocked tool cannot grow
+converter memory without bound or fill one pipe while the other is read. Exceeding
+either cap fails explicitly with `ERROR[tool_output_limit]`. On timeout or output
+overflow the complete group (including tool-spawned descendants) receives a
 bounded graceful termination interval followed by a forced kill and bounded reap;
 cleanup never waits indefinitely on a descendant holding an output pipe. A missing executable,
 nonzero exit (including corrupt/encrypted PDFs), timeout, non-UTF-8 tool output,
