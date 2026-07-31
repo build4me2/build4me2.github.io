@@ -1,17 +1,17 @@
 /* Editorial retro design system — intentionally monochrome. */
 :root {
-    --theme: #ededeb;
-    --entry: #e3e3e0;
-    --primary: #171719;
+    --theme: #e9e8e4;
+    --entry: #dfded9;
+    --primary: #242427;
     --secondary: #626267;
     --tertiary: #d7d7d3;
     --content: #29292c;
-    --code-block-bg: #171719;
+    --code-block-bg: #242427;
     --code-bg: #ddddda;
     --border: #9a9a9c;
-    --design-paper: #ededeb;
-    --design-ink: #171719;
-    --design-ink-soft: #3d3d41;
+    --design-paper: #e9e8e4;
+    --design-ink: #242427;
+    --design-ink-soft: #45454a;
     --design-muted: #68686d;
     --design-rule: #646468;
 }
