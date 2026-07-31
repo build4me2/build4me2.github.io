@@ -271,7 +271,7 @@ body::-webkit-scrollbar { display: none; }
     flex-direction: row;
     flex-wrap: wrap;
     align-items: center;
-    justify-content: space-between;
+    justify-content: center;
     gap: 16px 28px;
     width: min(100% - 48px, 1180px);
     max-width: 1180px;
